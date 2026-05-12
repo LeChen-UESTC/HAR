@@ -1,0 +1,37 @@
+# Runtime artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local environments
+.venv/
+venv/
+env/
+
+# Data and model artifacts
+/data/src/
+/data/cache/
+/models/
+/outputs/
+/wandb/
+/logs/
+/visualization/figures/
+/visualization/logs/
+
+# Checkpoints and arrays
+*.ckpt
+*.pth
+*.pt
+*.pkl
+*.npy
+*.npz
+*.lmdb
+*.lmdb-lock
+*.deprecated*
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/

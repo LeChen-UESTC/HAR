@@ -1,0 +1,8 @@
+base_config: ntu60_zsl.yaml
+
+experiment:
+  tags: ["ntu60", "projector-part-aware-qformer"]
+
+model:
+  projector:
+    type: part_aware_qformer

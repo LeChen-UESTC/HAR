@@ -1,0 +1,164 @@
+experiment:
+  project_name: skeleton-gircse
+  seed: 42
+  output_root: outputs
+  log_root: logs
+  wandb_mode: offline
+  tags: ["ntu60", "zsl", "skeleton-gircse"]
+
+runtime:
+  torch_dtype: bfloat16
+  fallback_to_float32_on_cpu: true
+  trust_remote_code: true
+  attn_implementation: null
+  device_map_text: auto
+  device_map_train: null
+
+paths:
+  data_root: data/src/ntu60
+  cache_root: data/cache
+  manifest_train: data/src/ntu60/train_seen.jsonl
+  manifest_val: data/src/ntu60/val_seen.jsonl
+  manifest_test: data/src/ntu60/test_unseen.jsonl
+  class_names: data/src/ntu60/class_names.txt
+  split_file: data/src/ntu60/zsl_split.json
+  qwen_instruct_model: /home/chenle/GIRCSE/Qwen2.5-7B
+  gircse_model: /home/chenle/GIRCSE/GIRCSE-QWEN7B
+  text_bank: data/cache/text_embeddings_ntu60_zsl.pt
+  description_cache: data/cache/rich_descriptions_ntu60.json
+
+dataset:
+  name: ntu60
+  split: zsl
+  num_classes: 60
+  seen_classes: []
+  unseen_classes: []
+  skeleton_shape:
+    channels: 3
+    frames: 64
+    joints: 25
+    persons: 2
+  sampling_strategy:
+    fps: 1
+    max_frames: 64
+    frame_interval: 1
+    resolution: null
+    augmentation_version: none
+  preprocess_version: v1
+  cache_policy: validate_or_rebuild
+  allow_raw_fallback: true
+
+text_branch:
+  description_variant: full
+  generation:
+    max_new_tokens: 512
+    temperature: 0.2
+    top_p: 0.9
+    dry_run: false
+  embedding:
+    prompt: "Instruct: Represent the semantic meaning of the following human action description for zero-shot skeleton action recognition.\nQuery: {rich_description}"
+    k_text: 20
+    normalize: true
+    pooling: generate_mean
+    logit_temperature: 1.0
+
+model:
+  name: skeleton_gircse
+  modality: skeleton
+  shift_gcn:
+    in_channels: 3
+    num_joints: 25
+    num_persons: 2
+    hidden_dim: 256
+    out_dim: 512
+    dropout: 0.1
+    pretrained_path: null
+    freeze: false
+  projector:
+    type: part_aware_qformer
+    in_dim: 512
+    llm_dim: 4096
+    target_temporal_bins: 4
+    num_query_tokens: 7
+    query_roles:
+      - head
+      - left_arm
+      - right_arm
+      - torso
+      - left_leg
+      - right_leg
+      - global
+    qformer_hidden_dim: 768
+    qformer_num_layers: 6
+    qformer_num_heads: 12
+    qformer_intermediate_dim: 3072
+    cross_attention_freq: 2
+    hidden_dropout_prob: 0.1
+    attention_probs_dropout_prob: 0.1
+    initializer_range: 0.02
+    init_from_pretrained: false
+    pretrained_name_or_path: bert-base-uncased
+    use_part_token_embeddings: true
+    joint_part_roles:
+      - torso
+      - torso
+      - head
+      - head
+      - left_arm
+      - left_arm
+      - left_arm
+      - left_arm
+      - right_arm
+      - right_arm
+      - right_arm
+      - right_arm
+      - left_leg
+      - left_leg
+      - left_leg
+      - left_leg
+      - right_leg
+      - right_leg
+      - right_leg
+      - right_leg
+      - torso
+      - left_arm
+      - left_arm
+      - right_arm
+      - right_arm
+    part_prior_loss:
+      enabled: false
+      weight: 0.0
+  prompt:
+    text: "Instruct: Represent the semantic meaning of the following human skeleton motion for zero-shot action recognition.\nQuery:"
+  soft_tokens:
+    k_train: 5
+    k_test: [1, 3, 5, 10, 20]
+    pooling: generate_mean
+    logit_temperature: 1.0
+
+loss:
+  type: stepwise_infonce_irr
+  temperature: 0.05
+  lambda_irr: 1.0
+
+train:
+  stage: skeleton_gircse
+  epochs: 20
+  batch_size: 8
+  num_workers: 4
+  lr_projector: 0.0001
+  lr_shift_gcn: 0.00001
+  weight_decay: 0.01
+  grad_clip_norm: 1.0
+  mixed_precision: fp16
+  distributed: false
+  eval_during_train: false
+  eval_freq: 1
+  save_freq: 1
+  log_freq: 20
+
+eval:
+  batch_size: 8
+  num_workers: 4
+  calibrated_stacking_gamma: 0.0
+  metrics: ["top1"]

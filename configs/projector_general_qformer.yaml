@@ -1,0 +1,30 @@
+base_config: ntu60_zsl.yaml
+
+experiment:
+  tags: ["ntu60", "projector-general-qformer"]
+
+model:
+  projector:
+    type: qformer
+    in_dim: 512
+    llm_dim: 4096
+    num_query_tokens: 7
+    query_roles:
+      - query_0
+      - query_1
+      - query_2
+      - query_3
+      - query_4
+      - query_5
+      - query_6
+    qformer_hidden_dim: 768
+    qformer_num_layers: 6
+    qformer_num_heads: 12
+    qformer_intermediate_dim: 3072
+    cross_attention_freq: 2
+    hidden_dropout_prob: 0.1
+    attention_probs_dropout_prob: 0.1
+    initializer_range: 0.02
+    init_from_pretrained: false
+    pretrained_name_or_path: bert-base-uncased
+    use_part_token_embeddings: false

@@ -1,0 +1,11 @@
+base_config: ntu60_zsl.yaml
+
+experiment:
+  tags: ["ntu60", "projector-linear"]
+
+model:
+  projector:
+    type: linear
+    in_dim: 512
+    llm_dim: 4096
+    target_temporal_bins: 4

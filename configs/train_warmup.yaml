@@ -1,0 +1,17 @@
+base_config: ntu60_zsl.yaml
+
+experiment:
+  tags: ["ntu60", "warmup", "classwise-infonce"]
+
+train:
+  stage: prealign
+  epochs: 10
+  batch_size: 16
+  lr_projector: 0.0001
+  lr_shift_gcn: 0.00001
+  freeze_shift_gcn: true
+  eval_during_train: false
+
+loss:
+  type: classwise_infonce
+  temperature: 0.05
