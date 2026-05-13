@@ -132,8 +132,8 @@ python -m http.server 8000
 ```
 
 然后访问 `http://localhost:8000/visualization/soft_token_viewer.html`，上传导出的 JSON。
-页面支持查看每个 step 的 raw top tokens、filtered semantic tokens、过滤 anchor 后重归一化的
-residual semantic tokens，以及 step group `1-5 / 6-10 / 11-20` 的去重语义词。
+页面支持查看每个 step 与 step group `1-5 / 6-10 / 11-20` 的 raw top tokens、
+filtered semantic tokens、过滤 anchor 后重归一化的 residual semantic tokens。
 示例 JSON 位于
 `visualization/examples/gircse_soft_tokens_mock.json`。
 

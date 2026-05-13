@@ -487,22 +487,29 @@
       const run = currentRun();
       if (state.mode === "group") {
         const group = run.groups[state.selectedIndex];
-        const key = state.tokenSet === "residual" ? "residual_top" : "semantic_top";
-        return (group?.[key] || group?.semantic_top || []).slice(0, state.limit).map((item, index) => ({
-          token: item.token,
-          normalized: item.token,
-          canonical: item.token,
-          type: "semantic",
-          rank: item.best_rank,
-          prob: item.prob_sum,
-          raw_prob: item.raw_prob_sum,
-          residual_prob: item.residual_prob_sum,
-          prob_kind: item.prob_kind || "prob_sum",
-          freq: item.freq,
-          token_id: (item.token_ids || []).join(", "),
-          step: item.first_step,
-          order: index + 1
-        }));
+        const key = state.tokenSet === "raw"
+          ? "raw_top"
+          : state.tokenSet === "residual"
+            ? "residual_top"
+            : "semantic_top";
+        return (group?.[key] || []).slice(0, state.limit).map((item, index) => {
+          const isRawGroup = state.tokenSet === "raw";
+          return {
+            token: item.token,
+            normalized: item.normalized || item.token,
+            canonical: item.canonical || item.token,
+            type: item.type || "semantic",
+            rank: item.best_rank || item.rank,
+            prob: item.prob_sum ?? item.prob,
+            raw_prob: item.raw_prob_sum,
+            residual_prob: item.residual_prob_sum,
+            prob_kind: item.prob_kind || "prob_sum",
+            freq: item.freq,
+            token_id: isRawGroup ? item.token_id : (item.token_ids || []).join(", "),
+            step: item.first_step,
+            order: index + 1
+          };
+        });
       }
       const step = run.steps[state.selectedIndex];
       const key = state.tokenSet === "raw"
@@ -619,9 +626,6 @@
     }
 
     function renderAll() {
-      if (state.mode === "group" && state.tokenSet === "raw") {
-        state.tokenSet = "semantic";
-      }
       populateRuns();
       populateStepSelect();
       els.stepMode.classList.toggle("active", state.mode === "step");
@@ -629,7 +633,7 @@
       els.rawView.classList.toggle("active", state.tokenSet === "raw");
       els.semanticView.classList.toggle("active", state.tokenSet === "semantic");
       els.residualView.classList.toggle("active", state.tokenSet === "residual");
-      els.rawView.disabled = state.mode === "group";
+      els.rawView.disabled = false;
       renderMeta();
       renderTokens();
     }
@@ -664,7 +668,6 @@
 
     els.groupMode.addEventListener("click", () => {
       state.mode = "group";
-      state.tokenSet = "semantic";
       state.selectedIndex = 0;
       renderAll();
     });

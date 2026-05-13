@@ -175,6 +175,50 @@
           "name": "1-2",
           "start": 1,
           "end": 2,
+          "raw_top": [
+            {
+              "token": "📐",
+              "normalized": "📐",
+              "canonical": "📐",
+              "type": "anchor",
+              "keep": false,
+              "token_id": 101,
+              "rank": 1,
+              "prob": 1.25,
+              "prob_sum": 1.25,
+              "prob_kind": "prob_sum",
+              "freq": 2,
+              "first_step": 1
+            },
+            {
+              "token": "⚗",
+              "normalized": "⚗",
+              "canonical": "⚗",
+              "type": "anchor",
+              "keep": false,
+              "token_id": 102,
+              "rank": 2,
+              "prob": 0.37,
+              "prob_sum": 0.37,
+              "prob_kind": "prob_sum",
+              "freq": 1,
+              "first_step": 1
+            },
+            {
+              "token": " tracking",
+              "normalized": "tracking",
+              "canonical": "track",
+              "type": "semantic",
+              "keep": true,
+              "token_id": 103,
+              "rank": 5,
+              "prob": 0.00003,
+              "prob_sum": 0.00003,
+              "prob_kind": "prob_sum",
+              "freq": 1,
+              "first_step": 1
+            }
+          ],
           "semantic_top": [
             {
               "token": "track",

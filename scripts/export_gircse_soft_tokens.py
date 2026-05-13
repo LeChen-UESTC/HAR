@@ -448,6 +448,69 @@ def aggregate_group(
     return output
 
 
+def aggregate_group_raw(
+    records: list[dict[str, Any]],
+    start: int,
+    end: int,
+    topn: int,
+) -> list[dict[str, Any]]:
+    stats: dict[tuple[int, str], dict[str, Any]] = defaultdict(
+        lambda: {
+            "freq": 0,
+            "prob_sum": 0.0,
+            "best_rank": 10**9,
+            "first_step": 10**9,
+            "token": "",
+            "normalized": "",
+            "canonical": "",
+            "type": "anchor",
+            "keep": False,
+            "token_id": None,
+        }
+    )
+
+    for record in records:
+        step = record["step"]
+        if not (start <= step <= end):
+            continue
+        seen_this_step = set()
+        for item in record["items"]:
+            key = (item["token_id"], item["canonical"])
+            if key in seen_this_step:
+                continue
+            seen_this_step.add(key)
+            stats[key]["freq"] += 1
+            stats[key]["prob_sum"] += item["prob"]
+            stats[key]["best_rank"] = min(stats[key]["best_rank"], item["rank"])
+            stats[key]["first_step"] = min(stats[key]["first_step"], step)
+            stats[key]["token"] = item["token"]
+            stats[key]["normalized"] = item["normalized"]
+            stats[key]["canonical"] = item["canonical"]
+            stats[key]["type"] = item["type"]
+            stats[key]["keep"] = item["keep"]
+            stats[key]["token_id"] = item["token_id"]
+
+    grouped_items = list(stats.values())
+    grouped_items.sort(key=lambda item: group_sort_key(item, "prob_sum"))
+    return [
+        {
+            "token": item["token"],
+            "normalized": item["normalized"],
+            "canonical": item["canonical"],
+            "type": item["type"],
+            "keep": item["keep"],
+            "token_id": item["token_id"],
+            "rank": item["best_rank"],
+            "prob": item["prob_sum"],
+            "prob_sum": item["prob_sum"],
+            "prob_kind": "prob_sum",
+            "freq": item["freq"],
+            "first_step": item["first_step"],
+        }
+        for item in grouped_items[:topn]
+    ]
+
+
 def build_prompt_payload(
     model_label: str,
     model: Any,
@@ -499,6 +562,7 @@ def build_prompt_payload(
                 "name": f"{start}-{end}",
                 "start": start,
                 "end": end,
+                "raw_top": aggregate_group_raw(records, start, end, args.topk),
                 "semantic_top": aggregate_group(records, start, end, args.topk, "prob_sum", "prob_sum"),
                 "residual_top": aggregate_group(records, start, end, args.topk, "residual_prob_sum", "residual_prob_sum"),
             }
