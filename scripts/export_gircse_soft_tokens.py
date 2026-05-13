@@ -12,13 +12,25 @@ from pathlib import Path
 from typing import Any
 
 
+DEFAULT_BASE_MODEL_PATH = "/data/chenle/GIRCSE/Qwen2.5-7B"
+DEFAULT_ADAPTER_PATH = "/data/chenle/GIRCSE/GIRCSE-QWEN7B"
+DEFAULT_TEXT = "Why is it so hard to track down this card?"
+DEFAULT_INSTRUCTIONS = [
+    "Represent the intention of this text.",
+    "Represent the emotion of this text.",
+]
+DEFAULT_INSTRUCTION_NAMES = ["intention", "emotion"]
+DEFAULT_OUTPUT_JSON = "/data/chenle/GIRCSE/HAR/visualization/examples/gircse_soft_tokens_table4.json"
+DEFAULT_GPU_IDS = "0,1,2,3"
+
+
 def apply_gpu_visibility_from_argv() -> None:
-    if "--gpu_ids" not in sys.argv:
-        return
-    idx = sys.argv.index("--gpu_ids")
-    if idx + 1 >= len(sys.argv):
-        return
-    os.environ["CUDA_VISIBLE_DEVICES"] = sys.argv[idx + 1]
+    gpu_ids = DEFAULT_GPU_IDS
+    if "--gpu_ids" in sys.argv:
+        idx = sys.argv.index("--gpu_ids")
+        if idx + 1 < len(sys.argv):
+            gpu_ids = sys.argv[idx + 1]
+    os.environ.setdefault("CUDA_VISIBLE_DEVICES", gpu_ids)
 
 
 apply_gpu_visibility_from_argv()
@@ -70,22 +82,27 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Export GIRCSE soft-token top-k distributions for visualization."
     )
-    parser.add_argument("--base_model_path", required=True)
-    parser.add_argument("--adapter_path", default=None)
-    parser.add_argument("--text", required=True)
-    parser.add_argument("--instruction", action="append", required=True)
+    parser.add_argument("--base_model_path", default=DEFAULT_BASE_MODEL_PATH)
+    parser.add_argument("--adapter_path", default=DEFAULT_ADAPTER_PATH)
+    parser.add_argument("--text", default=DEFAULT_TEXT)
+    parser.add_argument("--instruction", action="append", default=None)
     parser.add_argument("--instruction_name", action="append", default=None)
-    parser.add_argument("--output_json", required=True)
+    parser.add_argument("--output_json", default=DEFAULT_OUTPUT_JSON)
     parser.add_argument("--k", type=int, default=20)
     parser.add_argument("--topk", type=int, default=30)
     parser.add_argument("--raw_topk", type=int, default=500)
     parser.add_argument("--logit_temperature", type=float, default=1.0)
     parser.add_argument("--groups", default="1-5,6-10,11-20")
-    parser.add_argument("--gpu_ids", default=None, help="Optional CUDA_VISIBLE_DEVICES value, e.g. 0,1,2,3.")
-    parser.add_argument("--include_base", action="store_true", help="Also export before-FT base model.")
+    parser.add_argument("--gpu_ids", default=DEFAULT_GPU_IDS, help="Optional CUDA_VISIBLE_DEVICES value, e.g. 0,1,2,3.")
+    parser.add_argument("--include_base", action=argparse.BooleanOptionalAction, default=True, help="Also export before-FT base model.")
     parser.add_argument("--add_eos", action="store_true")
     parser.add_argument("--attn_implementation", default="flash_attention_2")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.instruction is None:
+        args.instruction = list(DEFAULT_INSTRUCTIONS)
+    if args.instruction_name is None:
+        args.instruction_name = list(DEFAULT_INSTRUCTION_NAMES)
+    return args
 
 
 def parse_groups(raw: str) -> list[tuple[int, int]]:
