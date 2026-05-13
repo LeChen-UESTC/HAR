@@ -302,6 +302,14 @@
       <label for="stepSelect">Step / Group</label>
       <select id="stepSelect"></select>
 
+      <label for="sortSelect">Sort</label>
+      <select id="sortSelect">
+        <option value="frequency">Frequency</option>
+        <option value="probability">Probability</option>
+        <option value="rank">Rank</option>
+        <option value="first_step">First Step</option>
+      </select>
+
       <label>Display</label>
       <div class="seg three">
         <button class="limitButton active" type="button" data-limit="30">30</button>
@@ -442,6 +450,7 @@
       mode: "step",
       tokenSet: "raw",
       selectedIndex: 0,
+      sortBy: "frequency",
       limit: 30
     };
 
@@ -449,6 +458,7 @@
       fileInput: document.getElementById("fileInput"),
       runSelect: document.getElementById("runSelect"),
       stepSelect: document.getElementById("stepSelect"),
+      sortSelect: document.getElementById("sortSelect"),
       stepMode: document.getElementById("stepMode"),
       groupMode: document.getElementById("groupMode"),
       rawView: document.getElementById("rawView"),
@@ -483,6 +493,33 @@
       return "Semantic";
     }
 
+    function compareItems(a, b) {
+      if (state.sortBy === "probability") {
+        return Number(b.prob || 0) - Number(a.prob || 0)
+          || Number(a.rank || 999999) - Number(b.rank || 999999)
+          || String(a.canonical || a.token).localeCompare(String(b.canonical || b.token));
+      }
+      if (state.sortBy === "rank") {
+        return Number(a.rank || 999999) - Number(b.rank || 999999)
+          || Number(b.prob || 0) - Number(a.prob || 0)
+          || String(a.canonical || a.token).localeCompare(String(b.canonical || b.token));
+      }
+      if (state.sortBy === "first_step") {
+        return Number(a.step || 999999) - Number(b.step || 999999)
+          || Number(a.rank || 999999) - Number(b.rank || 999999)
+          || Number(b.prob || 0) - Number(a.prob || 0);
+      }
+      return Number(b.freq || 1) - Number(a.freq || 1)
+        || Number(b.prob || 0) - Number(a.prob || 0)
+        || Number(a.rank || 999999) - Number(b.rank || 999999)
+        || Number(a.step || 999999) - Number(b.step || 999999)
+        || String(a.canonical || a.token).localeCompare(String(b.canonical || b.token));
+    }
+
+    function sortAndLimit(items) {
+      return items.slice().sort(compareItems).slice(0, state.limit);
+    }
+
     function getItems() {
       const run = currentRun();
       if (state.mode === "group") {
@@ -492,7 +529,7 @@
           : state.tokenSet === "residual"
             ? "residual_top"
             : "semantic_top";
-        return (group?.[key] || []).slice(0, state.limit).map((item, index) => {
+        const mapped = (group?.[key] || []).map((item, index) => {
           const isRawGroup = state.tokenSet === "raw";
           return {
             token: item.token,
@@ -510,6 +547,7 @@
             order: index + 1
           };
         });
+        return sortAndLimit(mapped);
       }
       const step = run.steps[state.selectedIndex];
       const key = state.tokenSet === "raw"
@@ -517,7 +555,7 @@
         : state.tokenSet === "residual"
           ? "residual_top"
           : "semantic_top";
-      return (step?.[key] || step?.semantic_top || []).slice(0, state.limit);
+      return sortAndLimit(step?.[key] || step?.semantic_top || []);
     }
 
     function populateRuns() {
@@ -544,6 +582,7 @@
       });
       state.selectedIndex = Math.min(state.selectedIndex, Math.max(items.length - 1, 0));
       els.stepSelect.value = String(state.selectedIndex);
+      els.sortSelect.value = state.sortBy;
     }
 
     function renderMeta() {
@@ -657,6 +696,11 @@
 
     els.stepSelect.addEventListener("change", (event) => {
       state.selectedIndex = Number(event.target.value);
+      renderAll();
+    });
+
+    els.sortSelect.addEventListener("change", (event) => {
+      state.sortBy = event.target.value;
       renderAll();
     });
 
