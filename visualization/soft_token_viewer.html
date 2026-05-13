@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GIRCSE Soft Token Viewer</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f8fb;
+      --panel: #ffffff;
+      --ink: #18212f;
+      --muted: #617083;
+      --line: #d9e0ea;
+      --accent: #246bfe;
+      --semantic: #d8f3df;
+      --semantic-border: #8dd59f;
+      --anchor: #eceff4;
+      --anchor-border: #c9d0dc;
+      --stopword: #fff0c2;
+      --stopword-border: #e2c35f;
+      --artifact: #f9d7d7;
+      --artifact-border: #e19a9a;
+      --empty: #edf0f5;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    aside {
+      border-right: 1px solid var(--line);
+      background: var(--panel);
+      padding: 20px;
+      overflow: auto;
+    }
+
+    main {
+      padding: 22px 26px 36px;
+      overflow: auto;
+    }
+
+    h1 {
+      font-size: 22px;
+      line-height: 1.2;
+      margin: 0 0 18px;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      font-size: 15px;
+      margin: 22px 0 10px;
+      letter-spacing: 0;
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin: 14px 0 6px;
+    }
+
+    input[type="file"],
+    select,
+    button {
+      width: 100%;
+      min-height: 36px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 6px;
+      padding: 7px 9px;
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    button.active,
+    .seg button.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    .seg {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+    }
+
+    .seg.three {
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .metric {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      min-height: 70px;
+    }
+
+    .metric .name {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+
+    .metric .value {
+      font-weight: 700;
+      font-size: 18px;
+      overflow-wrap: anywhere;
+    }
+
+    .prompt {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 14px;
+      margin-bottom: 16px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+      margin: 18px 0 12px;
+      flex-wrap: wrap;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+      border: 1px solid;
+    }
+
+    .dot.semantic { background: var(--semantic); border-color: var(--semantic-border); }
+    .dot.anchor { background: var(--anchor); border-color: var(--anchor-border); }
+    .dot.stopword { background: var(--stopword); border-color: var(--stopword-border); }
+    .dot.artifact { background: var(--artifact); border-color: var(--artifact-border); }
+
+    .token-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 10px;
+    }
+
+    .token {
+      border: 1px solid var(--anchor-border);
+      background: var(--anchor);
+      border-radius: 8px;
+      padding: 10px;
+      min-height: 92px;
+      display: grid;
+      gap: 7px;
+      align-content: start;
+      cursor: default;
+    }
+
+    .token.semantic {
+      background: var(--semantic);
+      border-color: var(--semantic-border);
+    }
+
+    .token.stopword {
+      background: var(--stopword);
+      border-color: var(--stopword-border);
+    }
+
+    .token.artifact,
+    .token.number,
+    .token.fragment,
+    .token.long {
+      background: var(--artifact);
+      border-color: var(--artifact-border);
+    }
+
+    .token .word {
+      font-weight: 800;
+      font-size: 18px;
+      line-height: 1.15;
+      overflow-wrap: anywhere;
+    }
+
+    .token .sub {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+
+    .bar {
+      width: 100%;
+      height: 6px;
+      background: rgba(24, 33, 47, 0.12);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .bar > i {
+      display: block;
+      height: 100%;
+      background: var(--accent);
+      width: 0%;
+    }
+
+    .empty-state {
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 26px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    @media (max-width: 820px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+
+      aside {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .meta {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside>
+      <h1>GIRCSE Soft Token Viewer</h1>
+      <label for="fileInput">JSON File</label>
+      <input id="fileInput" type="file" accept="application/json,.json">
+
+      <label for="runSelect">Run</label>
+      <select id="runSelect"></select>
+
+      <label>View</label>
+      <div class="seg">
+        <button id="stepMode" class="active" type="button">Steps</button>
+        <button id="groupMode" type="button">Groups</button>
+      </div>
+
+      <label>Token Set</label>
+      <div class="seg">
+        <button id="rawView" class="active" type="button">Raw</button>
+        <button id="semanticView" type="button">Semantic</button>
+      </div>
+
+      <label for="stepSelect">Step / Group</label>
+      <select id="stepSelect"></select>
+
+      <label>Display</label>
+      <div class="seg three">
+        <button class="limitButton active" type="button" data-limit="30">30</button>
+        <button class="limitButton" type="button" data-limit="60">60</button>
+        <button class="limitButton" type="button" data-limit="120">120</button>
+      </div>
+
+      <h2>Current File</h2>
+      <div id="fileMeta" class="small">Using embedded mock data. Upload JSON exported from <code>scripts/export_gircse_soft_tokens.py</code>.</div>
+    </aside>
+
+    <main>
+      <div class="meta">
+        <div class="metric">
+          <div class="name">Model</div>
+          <div id="metricModel" class="value">-</div>
+        </div>
+        <div class="metric">
+          <div class="name">Instruction</div>
+          <div id="metricInstruction" class="value">-</div>
+        </div>
+        <div class="metric">
+          <div class="name">Entropy</div>
+          <div id="metricEntropy" class="value">-</div>
+        </div>
+        <div class="metric">
+          <div class="name">Max Probability</div>
+          <div id="metricMaxProb" class="value">-</div>
+        </div>
+      </div>
+
+      <div id="promptBox" class="prompt"></div>
+
+      <div class="toolbar">
+        <h2 id="sectionTitle">Top Tokens</h2>
+        <div class="legend">
+          <span><i class="dot semantic"></i> semantic</span>
+          <span><i class="dot anchor"></i> anchor</span>
+          <span><i class="dot stopword"></i> stopword</span>
+          <span><i class="dot artifact"></i> filtered</span>
+        </div>
+      </div>
+
+      <div id="tokenGrid" class="token-grid"></div>
+    </main>
+  </div>
+
+  <script>
+    const mockData = {
+      metadata: {
+        text: "Why is it so hard to track down this card?",
+        k: 3,
+        topk: 30,
+        raw_topk: 60,
+        logit_temperature: 1.0
+      },
+      runs: [
+        {
+          model_label: "After FT / GIRCSE",
+          instruction_name: "intention",
+          instruction: "Represent the intention of this text.",
+          prompt: "Instruct: Represent the intention of this text.\nQuery:Why is it so hard to track down this card?",
+          steps: [
+            {
+              step: 1,
+              entropy: 1.42,
+              max_prob: 0.61,
+              raw_top: [
+                { token: "📐", normalized: "📐", canonical: "📐", type: "anchor", rank: 1, prob: 0.61, token_id: 101 },
+                { token: "⚗", normalized: "⚗", canonical: "⚗", type: "anchor", rank: 2, prob: 0.37, token_id: 102 },
+                { token: " tracking", normalized: "tracking", canonical: "track", type: "semantic", rank: 5, prob: 0.00003, token_id: 103 },
+                { token: " card", normalized: "card", canonical: "card", type: "semantic", rank: 11, prob: 0.00001, token_id: 104 }
+              ],
+              semantic_top: [
+                { token: " tracking", normalized: "tracking", canonical: "track", type: "semantic", rank: 5, prob: 0.00003, token_id: 103 },
+                { token: " card", normalized: "card", canonical: "card", type: "semantic", rank: 11, prob: 0.00001, token_id: 104 }
+              ]
+            },
+            {
+              step: 2,
+              entropy: 1.38,
+              max_prob: 0.64,
+              raw_top: [
+                { token: "📐", normalized: "📐", canonical: "📐", type: "anchor", rank: 1, prob: 0.64, token_id: 101 },
+                { token: "⚗", normalized: "⚗", canonical: "⚗", type: "anchor", rank: 2, prob: 0.34, token_id: 102 },
+                { token: " seek", normalized: "seek", canonical: "seek", type: "semantic", rank: 40, prob: 0.000006, token_id: 105 }
+              ],
+              semantic_top: [
+                { token: " seek", normalized: "seek", canonical: "seek", type: "semantic", rank: 40, prob: 0.000006, token_id: 105 }
+              ]
+            }
+          ],
+          groups: [
+            {
+              name: "1-5",
+              start: 1,
+              end: 5,
+              semantic_top: [
+                { token: "track", freq: 2, prob_sum: 0.00005, best_rank: 5, first_step: 1, surface_forms: ["tracking"], token_ids: [103] },
+                { token: "card", freq: 1, prob_sum: 0.00001, best_rank: 11, first_step: 1, surface_forms: ["card"], token_ids: [104] },
+                { token: "seek", freq: 1, prob_sum: 0.000006, best_rank: 40, first_step: 2, surface_forms: ["seek"], token_ids: [105] }
+              ]
+            }
+          ]
+        }
+      ]
+    };
+
+    const state = {
+      data: mockData,
+      runIndex: 0,
+      mode: "step",
+      tokenSet: "raw",
+      selectedIndex: 0,
+      limit: 30
+    };
+
+    const els = {
+      fileInput: document.getElementById("fileInput"),
+      runSelect: document.getElementById("runSelect"),
+      stepSelect: document.getElementById("stepSelect"),
+      stepMode: document.getElementById("stepMode"),
+      groupMode: document.getElementById("groupMode"),
+      rawView: document.getElementById("rawView"),
+      semanticView: document.getElementById("semanticView"),
+      fileMeta: document.getElementById("fileMeta"),
+      metricModel: document.getElementById("metricModel"),
+      metricInstruction: document.getElementById("metricInstruction"),
+      metricEntropy: document.getElementById("metricEntropy"),
+      metricMaxProb: document.getElementById("metricMaxProb"),
+      promptBox: document.getElementById("promptBox"),
+      sectionTitle: document.getElementById("sectionTitle"),
+      tokenGrid: document.getElementById("tokenGrid")
+    };
+
+    function formatNumber(value) {
+      if (value === undefined || value === null || Number.isNaN(Number(value))) return "-";
+      const number = Number(value);
+      if (Math.abs(number) < 0.001 && number !== 0) return number.toExponential(2);
+      return number.toFixed(number >= 1 ? 3 : 6).replace(/0+$/, "").replace(/\.$/, "");
+    }
+
+    function currentRun() {
+      return state.data.runs[state.runIndex];
+    }
+
+    function getItems() {
+      const run = currentRun();
+      if (state.mode === "group") {
+        const group = run.groups[state.selectedIndex];
+        return (group?.semantic_top || []).slice(0, state.limit).map((item, index) => ({
+          token: item.token,
+          normalized: item.token,
+          canonical: item.token,
+          type: "semantic",
+          rank: item.best_rank,
+          prob: item.prob_sum,
+          freq: item.freq,
+          token_id: (item.token_ids || []).join(", "),
+          step: item.first_step,
+          order: index + 1
+        }));
+      }
+      const step = run.steps[state.selectedIndex];
+      const key = state.tokenSet === "raw" ? "raw_top" : "semantic_top";
+      return (step?.[key] || []).slice(0, state.limit);
+    }
+
+    function populateRuns() {
+      els.runSelect.innerHTML = "";
+      state.data.runs.forEach((run, index) => {
+        const option = document.createElement("option");
+        option.value = String(index);
+        option.textContent = `${run.model_label} | ${run.instruction_name}`;
+        els.runSelect.appendChild(option);
+      });
+      state.runIndex = Math.min(state.runIndex, state.data.runs.length - 1);
+      els.runSelect.value = String(state.runIndex);
+    }
+
+    function populateStepSelect() {
+      const run = currentRun();
+      const items = state.mode === "group" ? run.groups : run.steps;
+      els.stepSelect.innerHTML = "";
+      items.forEach((item, index) => {
+        const option = document.createElement("option");
+        option.value = String(index);
+        option.textContent = state.mode === "group" ? `Step ${item.name}` : `Step ${item.step}`;
+        els.stepSelect.appendChild(option);
+      });
+      state.selectedIndex = Math.min(state.selectedIndex, Math.max(items.length - 1, 0));
+      els.stepSelect.value = String(state.selectedIndex);
+    }
+
+    function renderMeta() {
+      const run = currentRun();
+      const step = state.mode === "step" ? run.steps[state.selectedIndex] : null;
+      els.metricModel.textContent = run.model_label || "-";
+      els.metricInstruction.textContent = run.instruction_name || "-";
+      els.metricEntropy.textContent = step ? formatNumber(step.entropy) : "-";
+      els.metricMaxProb.textContent = step ? formatNumber(step.max_prob) : "-";
+      els.promptBox.textContent = run.prompt || "";
+      els.sectionTitle.textContent = state.mode === "group"
+        ? `Semantic Tokens: Step ${run.groups[state.selectedIndex]?.name || ""}`
+        : `${state.tokenSet === "raw" ? "Raw" : "Semantic"} Top Tokens: Step ${run.steps[state.selectedIndex]?.step || ""}`;
+    }
+
+    function tokenClass(item) {
+      const type = item.type || "semantic";
+      if (type === "semantic") return "token semantic";
+      if (type === "stopword") return "token stopword";
+      if (["artifact", "number", "fragment", "long"].includes(type)) return `token ${type}`;
+      return "token anchor";
+    }
+
+    function renderTokens() {
+      const items = getItems();
+      els.tokenGrid.innerHTML = "";
+      if (!items.length) {
+        const empty = document.createElement("div");
+        empty.className = "empty-state";
+        empty.textContent = "No tokens for this selection.";
+        els.tokenGrid.appendChild(empty);
+        return;
+      }
+      const maxProb = Math.max(...items.map((item) => Number(item.prob || 0)), 1e-12);
+      items.forEach((item, index) => {
+        const card = document.createElement("div");
+        card.className = tokenClass(item);
+        card.title = [
+          `token: ${item.token || item.canonical}`,
+          `canonical: ${item.canonical || item.token}`,
+          `rank: ${item.rank || "-"}`,
+          `prob: ${formatNumber(item.prob)}`,
+          `token_id: ${item.token_id || "-"}`,
+          `type: ${item.type || "semantic"}`,
+          item.freq ? `freq: ${item.freq}` : ""
+        ].filter(Boolean).join("\n");
+
+        const word = document.createElement("div");
+        word.className = "word";
+        word.textContent = item.canonical || item.normalized || item.token;
+
+        const sub = document.createElement("div");
+        sub.className = "sub";
+        sub.textContent = state.mode === "group"
+          ? `#${index + 1} · freq ${item.freq} · rank ${item.rank}`
+          : `#${index + 1} · rank ${item.rank} · ${item.type}`;
+
+        const prob = document.createElement("div");
+        prob.className = "sub";
+        prob.textContent = `p=${formatNumber(item.prob)} · id=${item.token_id ?? "-"}`;
+
+        const bar = document.createElement("div");
+        bar.className = "bar";
+        const fill = document.createElement("i");
+        fill.style.width = `${Math.max(2, (Number(item.prob || 0) / maxProb) * 100)}%`;
+        bar.appendChild(fill);
+
+        card.appendChild(word);
+        card.appendChild(sub);
+        card.appendChild(prob);
+        card.appendChild(bar);
+        els.tokenGrid.appendChild(card);
+      });
+    }
+
+    function renderAll() {
+      populateRuns();
+      populateStepSelect();
+      els.stepMode.classList.toggle("active", state.mode === "step");
+      els.groupMode.classList.toggle("active", state.mode === "group");
+      els.rawView.classList.toggle("active", state.tokenSet === "raw");
+      els.semanticView.classList.toggle("active", state.tokenSet === "semantic");
+      els.rawView.disabled = state.mode === "group";
+      renderMeta();
+      renderTokens();
+    }
+
+    els.fileInput.addEventListener("change", async (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      const text = await file.text();
+      state.data = JSON.parse(text);
+      state.runIndex = 0;
+      state.selectedIndex = 0;
+      els.fileMeta.textContent = `${file.name} · ${state.data.runs.length} run(s) · text: ${state.data.metadata?.text || "-"}`;
+      renderAll();
+    });
+
+    els.runSelect.addEventListener("change", (event) => {
+      state.runIndex = Number(event.target.value);
+      state.selectedIndex = 0;
+      renderAll();
+    });
+
+    els.stepSelect.addEventListener("change", (event) => {
+      state.selectedIndex = Number(event.target.value);
+      renderAll();
+    });
+
+    els.stepMode.addEventListener("click", () => {
+      state.mode = "step";
+      state.selectedIndex = 0;
+      renderAll();
+    });
+
+    els.groupMode.addEventListener("click", () => {
+      state.mode = "group";
+      state.tokenSet = "semantic";
+      state.selectedIndex = 0;
+      renderAll();
+    });
+
+    els.rawView.addEventListener("click", () => {
+      state.tokenSet = "raw";
+      renderAll();
+    });
+
+    els.semanticView.addEventListener("click", () => {
+      state.tokenSet = "semantic";
+      renderAll();
+    });
+
+    document.querySelectorAll(".limitButton").forEach((button) => {
+      button.addEventListener("click", () => {
+        document.querySelectorAll(".limitButton").forEach((item) => item.classList.remove("active"));
+        button.classList.add("active");
+        state.limit = Number(button.dataset.limit);
+        renderAll();
+      });
+    });
+
+    renderAll();
+  </script>
+</body>
+</html>

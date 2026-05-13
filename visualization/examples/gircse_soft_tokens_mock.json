@@ -1,0 +1,157 @@
+{
+  "metadata": {
+    "base_model_path": "/data/chenle/GIRCSE/Qwen2.5-7B",
+    "adapter_path": "/data/chenle/GIRCSE/GIRCSE-QWEN7B",
+    "text": "Why is it so hard to track down this card?",
+    "k": 2,
+    "topk": 30,
+    "raw_topk": 60,
+    "logit_temperature": 1.0,
+    "groups": [
+      {
+        "start": 1,
+        "end": 2
+      }
+    ]
+  },
+  "runs": [
+    {
+      "model_label": "After FT / GIRCSE",
+      "instruction_name": "intention",
+      "instruction": "Represent the intention of this text.",
+      "prompt": "Instruct: Represent the intention of this text.\nQuery:Why is it so hard to track down this card?",
+      "steps": [
+        {
+          "step": 1,
+          "entropy": 1.42,
+          "max_prob": 0.61,
+          "raw_top": [
+            {
+              "step": 1,
+              "rank": 1,
+              "token_id": 101,
+              "token": "📐",
+              "normalized": "📐",
+              "canonical": "📐",
+              "prob": 0.61,
+              "type": "anchor",
+              "keep": false
+            },
+            {
+              "step": 1,
+              "rank": 2,
+              "token_id": 102,
+              "token": "⚗",
+              "normalized": "⚗",
+              "canonical": "⚗",
+              "prob": 0.37,
+              "type": "anchor",
+              "keep": false
+            },
+            {
+              "step": 1,
+              "rank": 5,
+              "token_id": 103,
+              "token": " tracking",
+              "normalized": "tracking",
+              "canonical": "track",
+              "prob": 0.00003,
+              "type": "semantic",
+              "keep": true
+            }
+          ],
+          "semantic_top": [
+            {
+              "step": 1,
+              "rank": 5,
+              "token_id": 103,
+              "token": " tracking",
+              "normalized": "tracking",
+              "canonical": "track",
+              "prob": 0.00003,
+              "type": "semantic",
+              "keep": true
+            }
+          ]
+        },
+        {
+          "step": 2,
+          "entropy": 1.38,
+          "max_prob": 0.64,
+          "raw_top": [
+            {
+              "step": 2,
+              "rank": 1,
+              "token_id": 101,
+              "token": "📐",
+              "normalized": "📐",
+              "canonical": "📐",
+              "prob": 0.64,
+              "type": "anchor",
+              "keep": false
+            },
+            {
+              "step": 2,
+              "rank": 40,
+              "token_id": 105,
+              "token": " seek",
+              "normalized": "seek",
+              "canonical": "seek",
+              "prob": 0.000006,
+              "type": "semantic",
+              "keep": true
+            }
+          ],
+          "semantic_top": [
+            {
+              "step": 2,
+              "rank": 40,
+              "token_id": 105,
+              "token": " seek",
+              "normalized": "seek",
+              "canonical": "seek",
+              "prob": 0.000006,
+              "type": "semantic",
+              "keep": true
+            }
+          ]
+        }
+      ],
+      "groups": [
+        {
+          "name": "1-2",
+          "start": 1,
+          "end": 2,
+          "semantic_top": [
+            {
+              "token": "track",
+              "freq": 1,
+              "prob_sum": 0.00003,
+              "best_rank": 5,
+              "first_step": 1,
+              "surface_forms": [
+                "tracking"
+              ],
+              "token_ids": [
+                103
+              ]
+            },
+            {
+              "token": "seek",
+              "freq": 1,
+              "prob_sum": 0.000006,
+              "best_rank": 40,
+              "first_step": 2,
+              "surface_forms": [
+                "seek"
+              ],
+              "token_ids": [
+                105
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

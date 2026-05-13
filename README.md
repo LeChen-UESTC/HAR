@@ -107,6 +107,35 @@ python scripts/eval_k_scaling.py --config configs/ntu60_zsl.yaml
 python visualization/plot_curves.py --log logs/experiment_latest.log
 ```
 
+GIRCSE soft token 可视化导出：
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1,2,3 python scripts/export_gircse_soft_tokens.py \
+  --base_model_path /data/chenle/GIRCSE/Qwen2.5-7B \
+  --adapter_path /data/chenle/GIRCSE/GIRCSE-QWEN7B \
+  --include_base \
+  --text "Why is it so hard to track down this card?" \
+  --instruction "Represent the intention of this text." \
+  --instruction_name intention \
+  --instruction "Represent the emotion of this text." \
+  --instruction_name emotion \
+  --k 20 \
+  --topk 30 \
+  --raw_topk 500 \
+  --output_json visualization/logs/gircse_soft_tokens_table4.json
+```
+
+打开可视化页面：
+
+```bash
+python -m http.server 8000
+```
+
+然后访问 `http://localhost:8000/visualization/soft_token_viewer.html`，上传导出的 JSON。
+页面支持查看每个 step 的 raw top tokens、filtered semantic tokens，以及 step group
+`1-5 / 6-10 / 11-20` 的去重语义词。示例 JSON 位于
+`visualization/examples/gircse_soft_tokens_mock.json`。
+
 ## 输出规范
 
 每次运行会创建实验目录：
