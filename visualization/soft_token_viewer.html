@@ -108,7 +108,7 @@
 
     .meta {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(6, minmax(0, 1fr));
       gap: 10px;
       margin-bottom: 16px;
     }
@@ -210,6 +210,7 @@
     .token.artifact,
     .token.number,
     .token.fragment,
+    .token.junk,
     .token.long {
       background: var(--artifact);
       border-color: var(--artifact-border);
@@ -292,9 +293,10 @@
       </div>
 
       <label>Token Set</label>
-      <div class="seg">
+      <div class="seg three">
         <button id="rawView" class="active" type="button">Raw</button>
         <button id="semanticView" type="button">Semantic</button>
+        <button id="residualView" type="button">Residual</button>
       </div>
 
       <label for="stepSelect">Step / Group</label>
@@ -328,6 +330,14 @@
         <div class="metric">
           <div class="name">Max Probability</div>
           <div id="metricMaxProb" class="value">-</div>
+        </div>
+        <div class="metric">
+          <div class="name">Semantic Mass</div>
+          <div id="metricSemanticMass" class="value">-</div>
+        </div>
+        <div class="metric">
+          <div class="name">Anchor-like Mass</div>
+          <div id="metricAnchorMass" class="value">-</div>
         </div>
       </div>
 
@@ -367,6 +377,9 @@
               step: 1,
               entropy: 1.42,
               max_prob: 0.61,
+              raw_topk_mass: 0.98004,
+              semantic_mass_topk: 0.00004,
+              anchor_like_mass_topk: 0.98,
               raw_top: [
                 { token: "📐", normalized: "📐", canonical: "📐", type: "anchor", rank: 1, prob: 0.61, token_id: 101 },
                 { token: "⚗", normalized: "⚗", canonical: "⚗", type: "anchor", rank: 2, prob: 0.37, token_id: 102 },
@@ -374,21 +387,31 @@
                 { token: " card", normalized: "card", canonical: "card", type: "semantic", rank: 11, prob: 0.00001, token_id: 104 }
               ],
               semantic_top: [
-                { token: " tracking", normalized: "tracking", canonical: "track", type: "semantic", rank: 5, prob: 0.00003, token_id: 103 },
-                { token: " card", normalized: "card", canonical: "card", type: "semantic", rank: 11, prob: 0.00001, token_id: 104 }
+                { token: " tracking", normalized: "tracking", canonical: "track", type: "semantic", rank: 5, prob: 0.00003, residual_prob: 0.75, raw_prob: 0.00003, token_id: 103 },
+                { token: " card", normalized: "card", canonical: "card", type: "semantic", rank: 11, prob: 0.00001, residual_prob: 0.25, raw_prob: 0.00001, token_id: 104 }
+              ],
+              residual_top: [
+                { token: " tracking", normalized: "tracking", canonical: "track", type: "semantic", rank: 5, prob: 0.75, residual_prob: 0.75, raw_prob: 0.00003, prob_kind: "residual_prob", token_id: 103 },
+                { token: " card", normalized: "card", canonical: "card", type: "semantic", rank: 11, prob: 0.25, residual_prob: 0.25, raw_prob: 0.00001, prob_kind: "residual_prob", token_id: 104 }
               ]
             },
             {
               step: 2,
               entropy: 1.38,
               max_prob: 0.64,
+              raw_topk_mass: 0.980006,
+              semantic_mass_topk: 0.000006,
+              anchor_like_mass_topk: 0.98,
               raw_top: [
                 { token: "📐", normalized: "📐", canonical: "📐", type: "anchor", rank: 1, prob: 0.64, token_id: 101 },
                 { token: "⚗", normalized: "⚗", canonical: "⚗", type: "anchor", rank: 2, prob: 0.34, token_id: 102 },
                 { token: " seek", normalized: "seek", canonical: "seek", type: "semantic", rank: 40, prob: 0.000006, token_id: 105 }
               ],
               semantic_top: [
-                { token: " seek", normalized: "seek", canonical: "seek", type: "semantic", rank: 40, prob: 0.000006, token_id: 105 }
+                { token: " seek", normalized: "seek", canonical: "seek", type: "semantic", rank: 40, prob: 0.000006, residual_prob: 1, raw_prob: 0.000006, token_id: 105 }
+              ],
+              residual_top: [
+                { token: " seek", normalized: "seek", canonical: "seek", type: "semantic", rank: 40, prob: 1, residual_prob: 1, raw_prob: 0.000006, prob_kind: "residual_prob", token_id: 105 }
               ]
             }
           ],
@@ -398,9 +421,14 @@
               start: 1,
               end: 5,
               semantic_top: [
-                { token: "track", freq: 2, prob_sum: 0.00005, best_rank: 5, first_step: 1, surface_forms: ["tracking"], token_ids: [103] },
-                { token: "card", freq: 1, prob_sum: 0.00001, best_rank: 11, first_step: 1, surface_forms: ["card"], token_ids: [104] },
-                { token: "seek", freq: 1, prob_sum: 0.000006, best_rank: 40, first_step: 2, surface_forms: ["seek"], token_ids: [105] }
+                { token: "track", freq: 2, prob_sum: 0.00005, raw_prob_sum: 0.00005, residual_prob_sum: 0.75, best_rank: 5, first_step: 1, surface_forms: ["tracking"], token_ids: [103] },
+                { token: "card", freq: 1, prob_sum: 0.00001, raw_prob_sum: 0.00001, residual_prob_sum: 0.25, best_rank: 11, first_step: 1, surface_forms: ["card"], token_ids: [104] },
+                { token: "seek", freq: 1, prob_sum: 0.000006, raw_prob_sum: 0.000006, residual_prob_sum: 1, best_rank: 40, first_step: 2, surface_forms: ["seek"], token_ids: [105] }
+              ],
+              residual_top: [
+                { token: "track", freq: 2, prob_sum: 0.75, raw_prob_sum: 0.00005, residual_prob_sum: 0.75, prob_kind: "residual_prob_sum", best_rank: 5, first_step: 1, surface_forms: ["tracking"], token_ids: [103] },
+                { token: "seek", freq: 1, prob_sum: 1, raw_prob_sum: 0.000006, residual_prob_sum: 1, prob_kind: "residual_prob_sum", best_rank: 40, first_step: 2, surface_forms: ["seek"], token_ids: [105] },
+                { token: "card", freq: 1, prob_sum: 0.25, raw_prob_sum: 0.00001, residual_prob_sum: 0.25, prob_kind: "residual_prob_sum", best_rank: 11, first_step: 1, surface_forms: ["card"], token_ids: [104] }
               ]
             }
           ]
@@ -425,11 +453,14 @@
       groupMode: document.getElementById("groupMode"),
       rawView: document.getElementById("rawView"),
       semanticView: document.getElementById("semanticView"),
+      residualView: document.getElementById("residualView"),
       fileMeta: document.getElementById("fileMeta"),
       metricModel: document.getElementById("metricModel"),
       metricInstruction: document.getElementById("metricInstruction"),
       metricEntropy: document.getElementById("metricEntropy"),
       metricMaxProb: document.getElementById("metricMaxProb"),
+      metricSemanticMass: document.getElementById("metricSemanticMass"),
+      metricAnchorMass: document.getElementById("metricAnchorMass"),
       promptBox: document.getElementById("promptBox"),
       sectionTitle: document.getElementById("sectionTitle"),
       tokenGrid: document.getElementById("tokenGrid")
@@ -446,17 +477,27 @@
       return state.data.runs[state.runIndex];
     }
 
+    function tokenSetLabel() {
+      if (state.tokenSet === "raw") return "Raw";
+      if (state.tokenSet === "residual") return "Residual";
+      return "Semantic";
+    }
+
     function getItems() {
       const run = currentRun();
       if (state.mode === "group") {
         const group = run.groups[state.selectedIndex];
-        return (group?.semantic_top || []).slice(0, state.limit).map((item, index) => ({
+        const key = state.tokenSet === "residual" ? "residual_top" : "semantic_top";
+        return (group?.[key] || group?.semantic_top || []).slice(0, state.limit).map((item, index) => ({
           token: item.token,
           normalized: item.token,
           canonical: item.token,
           type: "semantic",
           rank: item.best_rank,
           prob: item.prob_sum,
+          raw_prob: item.raw_prob_sum,
+          residual_prob: item.residual_prob_sum,
+          prob_kind: item.prob_kind || "prob_sum",
           freq: item.freq,
           token_id: (item.token_ids || []).join(", "),
           step: item.first_step,
@@ -464,8 +505,12 @@
         }));
       }
       const step = run.steps[state.selectedIndex];
-      const key = state.tokenSet === "raw" ? "raw_top" : "semantic_top";
-      return (step?.[key] || []).slice(0, state.limit);
+      const key = state.tokenSet === "raw"
+        ? "raw_top"
+        : state.tokenSet === "residual"
+          ? "residual_top"
+          : "semantic_top";
+      return (step?.[key] || step?.semantic_top || []).slice(0, state.limit);
     }
 
     function populateRuns() {
@@ -501,17 +546,19 @@
       els.metricInstruction.textContent = run.instruction_name || "-";
       els.metricEntropy.textContent = step ? formatNumber(step.entropy) : "-";
       els.metricMaxProb.textContent = step ? formatNumber(step.max_prob) : "-";
+      els.metricSemanticMass.textContent = step ? formatNumber(step.semantic_mass_topk) : "-";
+      els.metricAnchorMass.textContent = step ? formatNumber(step.anchor_like_mass_topk) : "-";
       els.promptBox.textContent = run.prompt || "";
       els.sectionTitle.textContent = state.mode === "group"
-        ? `Semantic Tokens: Step ${run.groups[state.selectedIndex]?.name || ""}`
-        : `${state.tokenSet === "raw" ? "Raw" : "Semantic"} Top Tokens: Step ${run.steps[state.selectedIndex]?.step || ""}`;
+        ? `${tokenSetLabel()} Tokens: Step ${run.groups[state.selectedIndex]?.name || ""}`
+        : `${tokenSetLabel()} Top Tokens: Step ${run.steps[state.selectedIndex]?.step || ""}`;
     }
 
     function tokenClass(item) {
       const type = item.type || "semantic";
       if (type === "semantic") return "token semantic";
       if (type === "stopword") return "token stopword";
-      if (["artifact", "number", "fragment", "long"].includes(type)) return `token ${type}`;
+      if (["artifact", "number", "fragment", "junk", "long"].includes(type)) return `token ${type}`;
       return "token anchor";
     }
 
@@ -534,6 +581,8 @@
           `canonical: ${item.canonical || item.token}`,
           `rank: ${item.rank || "-"}`,
           `prob: ${formatNumber(item.prob)}`,
+          item.raw_prob !== undefined ? `raw_prob: ${formatNumber(item.raw_prob)}` : "",
+          item.residual_prob !== undefined ? `residual_prob: ${formatNumber(item.residual_prob)}` : "",
           `token_id: ${item.token_id || "-"}`,
           `type: ${item.type || "semantic"}`,
           item.freq ? `freq: ${item.freq}` : ""
@@ -551,7 +600,9 @@
 
         const prob = document.createElement("div");
         prob.className = "sub";
-        prob.textContent = `p=${formatNumber(item.prob)} · id=${item.token_id ?? "-"}`;
+        const probLabel = String(item.prob_kind || "").includes("residual") ? "residual" : "p";
+        const rawText = item.raw_prob !== undefined ? ` · raw=${formatNumber(item.raw_prob)}` : "";
+        prob.textContent = `${probLabel}=${formatNumber(item.prob)}${rawText} · id=${item.token_id ?? "-"}`;
 
         const bar = document.createElement("div");
         bar.className = "bar";
@@ -568,12 +619,16 @@
     }
 
     function renderAll() {
+      if (state.mode === "group" && state.tokenSet === "raw") {
+        state.tokenSet = "semantic";
+      }
       populateRuns();
       populateStepSelect();
       els.stepMode.classList.toggle("active", state.mode === "step");
       els.groupMode.classList.toggle("active", state.mode === "group");
       els.rawView.classList.toggle("active", state.tokenSet === "raw");
       els.semanticView.classList.toggle("active", state.tokenSet === "semantic");
+      els.residualView.classList.toggle("active", state.tokenSet === "residual");
       els.rawView.disabled = state.mode === "group";
       renderMeta();
       renderTokens();
@@ -621,6 +676,11 @@
 
     els.semanticView.addEventListener("click", () => {
       state.tokenSet = "semantic";
+      renderAll();
+    });
+
+    els.residualView.addEventListener("click", () => {
+      state.tokenSet = "residual";
       renderAll();
     });
 

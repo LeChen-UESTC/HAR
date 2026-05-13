@@ -55,6 +55,21 @@ DEFAULT_STOPWORDS = {
     "before", "after", "below", "method", "system",
 }
 
+DEFAULT_JUNK_TOKENS = {
+    # Common Qwen/GIRCSE tail artifacts observed after high-probability anchor
+    # tokens dominate the distribution. The list is explicit so qualitative
+    # filtering remains auditable.
+    "acje", "addcriterion", "akest", "andalso", "atego", "backpage",
+    "bel", "belgi", "bilt", "br", "buster", "cardcontent", "comings",
+    "derp", "ebin", "elts", "engl", "everton", "eventqueue", "fkk",
+    "generationstrategy", "glish", "ksz", "ltd", "maneu", "newcom",
+    "nuest", "ocard", "ocre", "pupper", "rar", "rlen", "rtos", "safeg",
+    "scii", "soles", "stdlib", "tottenham", "twor", "uckland", "unet",
+    "zzle",
+}
+
+ANCHOR_LIKE_TYPES = {"anchor", "artifact", "empty", "fragment", "junk", "long", "number"}
+
 CANONICAL_ALIASES = {
     "tracking": "track",
     "tracked": "track",
@@ -93,6 +108,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--raw_topk", type=int, default=500)
     parser.add_argument("--logit_temperature", type=float, default=1.0)
     parser.add_argument("--groups", default="1-5,6-10,11-20")
+    parser.add_argument("--semantic_min_len", type=int, default=3)
+    parser.add_argument(
+        "--junk_token",
+        action="append",
+        default=None,
+        help="Additional normalized token to exclude from semantic/residual views.",
+    )
     parser.add_argument("--gpu_ids", default=DEFAULT_GPU_IDS, help="Optional CUDA_VISIBLE_DEVICES value, e.g. 0,1,2,3.")
     parser.add_argument("--include_base", action=argparse.BooleanOptionalAction, default=True, help="Also export before-FT base model.")
     parser.add_argument("--add_eos", action="store_true")
@@ -189,13 +211,15 @@ def canonicalize(token: str) -> str:
     return CANONICAL_ALIASES.get(normalized, normalized)
 
 
-def classify_token(token: str, stopwords: set[str]) -> str:
+def classify_token(token: str, stopwords: set[str], junk_tokens: set[str], semantic_min_len: int) -> str:
     normalized = normalize_token(token)
     if not normalized:
         return "empty"
     if normalized in stopwords:
         return "stopword"
-    if len(normalized) <= 1:
+    if normalized in junk_tokens:
+        return "junk"
+    if len(normalized) < semantic_min_len:
         return "fragment"
     if len(normalized) > 30:
         return "long"
@@ -210,7 +234,9 @@ def classify_token(token: str, stopwords: set[str]) -> str:
         ]
     ):
         return "artifact"
-    if re.fullmatch(r"[a-zA-Z][a-zA-Z\\-']*", normalized):
+    if re.fullmatch(r"[a-zA-Z][a-zA-Z'-]*", normalized):
+        if re.fullmatch(r"[a-z]+", normalized) and not re.search(r"[aeiouy]", normalized):
+            return "junk"
         return "semantic"
     return "anchor"
 
@@ -224,6 +250,8 @@ def collect_soft_tokens(
     raw_topk: int,
     logit_temperature: float,
     stopwords: set[str],
+    junk_tokens: set[str],
+    semantic_min_len: int,
 ) -> list[dict[str, Any]]:
     inputs = tokenize_text(tokenizer, [prompt])
     input_ids = inputs.input_ids
@@ -258,7 +286,7 @@ def collect_soft_tokens(
             items = []
             for rank, (prob, token_id) in enumerate(zip(top_probs.tolist(), top_ids.tolist()), start=1):
                 token = decode_token(tokenizer, int(token_id))
-                token_type = classify_token(token, stopwords)
+                token_type = classify_token(token, stopwords, junk_tokens, semantic_min_len)
                 items.append(
                     {
                         "step": step,
@@ -268,15 +296,25 @@ def collect_soft_tokens(
                         "normalized": normalize_token(token),
                         "canonical": canonicalize(token),
                         "prob": float(prob),
+                        "residual_prob": 0.0,
                         "type": token_type,
                         "keep": token_type == "semantic",
                     }
                 )
+            semantic_mass_topk = sum(item["prob"] for item in items if item["keep"])
+            anchor_like_mass_topk = sum(item["prob"] for item in items if item["type"] in ANCHOR_LIKE_TYPES)
+            raw_topk_mass = sum(item["prob"] for item in items)
+            for item in items:
+                if item["keep"] and semantic_mass_topk > 0:
+                    item["residual_prob"] = item["prob"] / semantic_mass_topk
             records.append(
                 {
                     "step": step,
                     "entropy": float(-(probs[0] * torch.log(probs[0] + 1e-12)).sum().item()),
                     "max_prob": float(top_probs[0].item()),
+                    "raw_topk_mass": float(raw_topk_mass),
+                    "semantic_mass_topk": float(semantic_mass_topk),
+                    "anchor_like_mass_topk": float(anchor_like_mass_topk),
                     "items": items,
                     "raw_top": items[:30],
                 }
@@ -300,7 +338,12 @@ def collect_soft_tokens(
     return records
 
 
-def semantic_top_for_step(record: dict[str, Any], topn: int) -> list[dict[str, Any]]:
+def filtered_top_for_step(
+    record: dict[str, Any],
+    topn: int,
+    prob_field: str,
+    prob_kind: str,
+) -> list[dict[str, Any]]:
     selected = []
     seen = set()
     for item in record["items"]:
@@ -310,10 +353,32 @@ def semantic_top_for_step(record: dict[str, Any], topn: int) -> list[dict[str, A
         if key in seen:
             continue
         seen.add(key)
-        selected.append(item)
+        output_item = dict(item)
+        output_item["raw_prob"] = item["prob"]
+        output_item["prob"] = item[prob_field]
+        output_item["prob_kind"] = prob_kind
+        selected.append(output_item)
         if len(selected) >= topn:
             break
     return selected
+
+
+def semantic_top_for_step(record: dict[str, Any], topn: int) -> list[dict[str, Any]]:
+    return filtered_top_for_step(record, topn, "prob", "prob")
+
+
+def residual_top_for_step(record: dict[str, Any], topn: int) -> list[dict[str, Any]]:
+    return filtered_top_for_step(record, topn, "residual_prob", "residual_prob")
+
+
+def group_sort_key(item: dict[str, Any], prob_field: str) -> tuple[Any, ...]:
+    return (
+        -item["freq"],
+        -item[prob_field],
+        item["best_rank"],
+        item["first_step"],
+        item["token"],
+    )
 
 
 def aggregate_group(
@@ -321,19 +386,20 @@ def aggregate_group(
     start: int,
     end: int,
     topn: int,
+    prob_field: str = "prob_sum",
+    prob_kind: str = "prob_sum",
 ) -> list[dict[str, Any]]:
     stats: dict[str, dict[str, Any]] = defaultdict(
         lambda: {
             "freq": 0,
             "prob_sum": 0.0,
+            "residual_prob_sum": 0.0,
             "best_rank": 10**9,
             "first_step": 10**9,
             "surface_forms": set(),
             "token_ids": set(),
         }
     )
-    order = []
-    seen_global = set()
 
     for record in records:
         step = record["step"]
@@ -348,31 +414,37 @@ def aggregate_group(
                 continue
             seen_this_step.add(key)
 
-            if key not in seen_global:
-                seen_global.add(key)
-                order.append(key)
-
             stats[key]["freq"] += 1
             stats[key]["prob_sum"] += item["prob"]
+            stats[key]["residual_prob_sum"] += item["residual_prob"]
             stats[key]["best_rank"] = min(stats[key]["best_rank"], item["rank"])
             stats[key]["first_step"] = min(stats[key]["first_step"], step)
             stats[key]["surface_forms"].add(item["normalized"])
             stats[key]["token_ids"].add(item["token_id"])
 
-    output = []
-    for key in order[:topn]:
-        value = stats[key]
-        output.append(
+    grouped_items = []
+    for key, value in stats.items():
+        grouped_items.append(
             {
                 "token": key,
                 "freq": value["freq"],
                 "prob_sum": value["prob_sum"],
+                "residual_prob_sum": value["residual_prob_sum"],
                 "best_rank": value["best_rank"],
                 "first_step": value["first_step"],
                 "surface_forms": sorted(value["surface_forms"]),
                 "token_ids": sorted(value["token_ids"]),
             }
         )
+
+    grouped_items.sort(key=lambda item: group_sort_key(item, prob_field))
+    output = []
+    for item in grouped_items[:topn]:
+        output_item = dict(item)
+        output_item["raw_prob_sum"] = item["prob_sum"]
+        output_item["prob_sum"] = item[prob_field]
+        output_item["prob_kind"] = prob_kind
+        output.append(output_item)
     return output
 
 
@@ -396,6 +468,8 @@ def build_prompt_payload(
         raw_topk=args.raw_topk,
         logit_temperature=args.logit_temperature,
         stopwords=stopwords,
+        junk_tokens=set(DEFAULT_JUNK_TOKENS).union(args.junk_token or []),
+        semantic_min_len=args.semantic_min_len,
     )
 
     steps = []
@@ -405,8 +479,12 @@ def build_prompt_payload(
                 "step": record["step"],
                 "entropy": record["entropy"],
                 "max_prob": record["max_prob"],
+                "raw_topk_mass": record["raw_topk_mass"],
+                "semantic_mass_topk": record["semantic_mass_topk"],
+                "anchor_like_mass_topk": record["anchor_like_mass_topk"],
                 "raw_top": record["raw_top"][: args.topk],
                 "semantic_top": semantic_top_for_step(record, args.topk),
+                "residual_top": residual_top_for_step(record, args.topk),
             }
         )
 
@@ -421,7 +499,8 @@ def build_prompt_payload(
                 "name": f"{start}-{end}",
                 "start": start,
                 "end": end,
-                "semantic_top": aggregate_group(records, start, end, args.topk),
+                "semantic_top": aggregate_group(records, start, end, args.topk, "prob_sum", "prob_sum"),
+                "residual_top": aggregate_group(records, start, end, args.topk, "residual_prob_sum", "residual_prob_sum"),
             }
             for start, end in groups
         ],
@@ -452,6 +531,8 @@ def main() -> None:
             "topk": args.topk,
             "raw_topk": args.raw_topk,
             "logit_temperature": args.logit_temperature,
+            "semantic_min_len": args.semantic_min_len,
+            "junk_tokens": sorted(set(DEFAULT_JUNK_TOKENS).union(args.junk_token or [])),
             "groups": [{"start": start, "end": end} for start, end in groups],
         },
         "runs": [],
