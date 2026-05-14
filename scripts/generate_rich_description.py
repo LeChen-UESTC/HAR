@@ -9,7 +9,10 @@ from src.utils.config_utils import apply_overrides, load_config
 def main() -> None:
     args = parse_common_args("Generate rich action descriptions with Qwen2.5.")
     config = apply_overrides(load_config(args.config), args.override)
-    class_names = load_class_names(config["paths"]["class_names"])
+    class_names = load_class_names(
+        config["paths"]["class_names"],
+        max_classes=config.get("dataset", {}).get("num_classes"),
+    )
     gen_cfg = config["text_branch"].get("generation", {})
     generate_descriptions(
         class_names=class_names,

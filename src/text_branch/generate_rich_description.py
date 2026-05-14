@@ -7,10 +7,55 @@ from typing import Any
 from .description_templates import generation_prompt, normalize_description_record
 
 
-def load_class_names(path: str | Path) -> list[str]:
+def load_class_names(path: str | Path, max_classes: int | None = None) -> list[str]:
     class_path = Path(path)
-    with class_path.open("r", encoding="utf-8") as handle:
-        return [line.strip() for line in handle if line.strip()]
+    class_names: list[str]
+    if class_path.suffix.lower() == ".json":
+        with class_path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        if isinstance(payload, list):
+            class_names = [
+                str(item.get("name", item.get("label", item)))
+                if isinstance(item, dict)
+                else str(item)
+                for item in payload
+            ]
+        elif isinstance(payload, dict):
+            for key in ("class_names", "classes", "action_names", "actions"):
+                if isinstance(payload.get(key), list):
+                    values = payload[key]
+                    class_names = [
+                        str(item.get("name", item.get("label", item)))
+                        if isinstance(item, dict)
+                        else str(item)
+                        for item in values
+                    ]
+                    break
+            else:
+                def sort_key(item: tuple[str, Any]) -> tuple[int, str]:
+                    raw_key = str(item[0])
+                    digits = "".join(ch for ch in raw_key if ch.isdigit())
+                    if digits:
+                        return int(digits), raw_key
+                    return 10**9, raw_key
+
+                class_names = []
+                for _, value in sorted(payload.items(), key=sort_key):
+                    if isinstance(value, dict):
+                        class_names.append(
+                            str(value.get("name", value.get("label", value)))
+                        )
+                    else:
+                        class_names.append(str(value))
+        else:
+            raise ValueError(f"Unsupported class-name JSON payload: {class_path}")
+    else:
+        with class_path.open("r", encoding="utf-8") as handle:
+            class_names = [line.strip() for line in handle if line.strip()]
+
+    if max_classes is not None:
+        return class_names[: int(max_classes)]
+    return class_names
 
 
 def parse_json_object(text: str) -> dict[str, Any]:

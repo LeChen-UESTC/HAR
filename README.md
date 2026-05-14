@@ -1,7 +1,7 @@
 # Skeleton-GIRCSE
 
 本项目是 Skeleton-GIRCSE 的本地工程骨架，用于在服务器
-`/home/chenle/GIRCSE` 下复现实验。所有会影响结果的路径、模型选择、采样策略、
+`/data/chenle/GIRCSE` 下复现实验。所有会影响结果的路径、模型选择、采样策略、
 loss、projection、训练阶段与评估开关都通过配置或命令行传入。
 
 ## GIRCSE 官方代码来源
@@ -34,10 +34,18 @@ Q-Former projector 使用 Salesforce LAVIS 的 BLIP-2 Q-Former 实现：
 
 默认配置已写入服务器路径：
 
-- GIRCSE-Qwen7B: `/home/chenle/GIRCSE/GIRCSE-QWEN7B`
-- Qwen2.5-7B-Instruct: `/home/chenle/GIRCSE/Qwen2.5-7B`
+- GIRCSE-Qwen7B: `/data/chenle/GIRCSE/GIRCSE-QWEN7B`
+- Qwen2.5-7B-Instruct: `/data/chenle/GIRCSE/Qwen2.5-7B`
 
 本地不要求存在这些模型目录；部署到服务器后按配置运行即可。
+
+默认数据配置使用已经预处理好的 NTU `.npz` 文件：
+
+- NTU120: `/data/chenle/GIRCSE/HAR/data/ntu_120/NTU120.npz`
+- NTU60: `/data/chenle/GIRCSE/HAR/data/ntu_60/NTU_60.npz`
+
+`.npz` 内部应包含 `x_data` 与 `y_data`，其中 `x_data` 采用 `[N, T, M*V*C]`
+布局，训练时会转换为 Shift-GCN 的 `[C, T, V, M]`。
 
 ## 环境
 
@@ -58,19 +66,19 @@ pip install -r requirements.txt
 生成富文本描述：
 
 ```bash
-python scripts/generate_rich_description.py --config configs/ntu60_zsl.yaml
+python scripts/generate_rich_description.py --config configs/ntu120_zsl.yaml
 ```
 
 缓存文本 embedding：
 
 ```bash
-python scripts/cache_text_bank.py --config configs/ntu60_zsl.yaml
+python scripts/cache_text_bank.py --config configs/ntu120_zsl.yaml
 ```
 
 Stage 0 Shift-GCN 预训练：
 
 ```bash
-python scripts/train_shiftgcn_seen.py --config configs/ntu60_zsl.yaml
+python scripts/train_shiftgcn_seen.py --config configs/ntu120_zsl.yaml
 ```
 
 Stage 1 预对齐 warmup：
@@ -96,9 +104,9 @@ python scripts/train_skeleton_gircse.py --config configs/projector_part_aware_qf
 ZSL/GZSL 评估：
 
 ```bash
-python scripts/eval_zsl.py --config configs/ntu60_zsl.yaml
-python scripts/eval_gzsl.py --config configs/ntu60_zsl.yaml
-python scripts/eval_k_scaling.py --config configs/ntu60_zsl.yaml
+python scripts/eval_zsl.py --config configs/ntu120_zsl.yaml
+python scripts/eval_gzsl.py --config configs/ntu120_zsl.yaml
+python scripts/eval_k_scaling.py --config configs/ntu120_zsl.yaml
 ```
 
 绘制本地曲线：
@@ -177,7 +185,8 @@ configs/            # 显式实验配置
 scripts/            # Python 入口
 scripts_sh/         # Shell 启动示例
 src/                # 核心源码
-data/src/           # 原始数据，建议软链接到外部存储
+data/ntu_60/        # 预处理后的 NTU60 npz
+data/ntu_120/       # 预处理后的 NTU120 npz
 data/cache/         # 预处理缓存
 outputs/            # checkpoint、metrics、predictions
 visualization/      # 本地曲线绘图

@@ -4,7 +4,7 @@ experiment:
   output_root: /data/chenle/GIRCSE/HAR/outputs
   log_root: /data/chenle/GIRCSE/HAR/logs
   wandb_mode: offline
-  tags: ["ntu60", "zsl", "skeleton-gircse"]
+  tags: ["ntu120", "zsl", "skeleton-gircse"]
 
 runtime:
   torch_dtype: bfloat16
@@ -15,24 +15,24 @@ runtime:
   device_map_train: null
 
 paths:
-  data_root: /data/chenle/GIRCSE/HAR/data/ntu_60
+  data_root: /data/chenle/GIRCSE/HAR/data/ntu_120
   cache_root: /data/chenle/GIRCSE/HAR/data/cache
-  npz_data: /data/chenle/GIRCSE/HAR/data/ntu_60/NTU_60.npz
-  train_npz: /data/chenle/GIRCSE/HAR/data/ntu_60/NTU_60.npz
-  val_npz: /data/chenle/GIRCSE/HAR/data/ntu_60/NTU_60.npz
-  test_npz: /data/chenle/GIRCSE/HAR/data/ntu_60/NTU_60.npz
+  npz_data: /data/chenle/GIRCSE/HAR/data/ntu_120/NTU120.npz
+  train_npz: /data/chenle/GIRCSE/HAR/data/ntu_120/NTU120.npz
+  val_npz: /data/chenle/GIRCSE/HAR/data/ntu_120/NTU120.npz
+  test_npz: /data/chenle/GIRCSE/HAR/data/ntu_120/NTU120.npz
   class_names: /data/chenle/GIRCSE/HAR/data/index_action_map.json
   split_file: null
   qwen_instruct_model: /data/chenle/GIRCSE/Qwen2.5-7B
   gircse_model: /data/chenle/GIRCSE/GIRCSE-QWEN7B
-  text_bank: /data/chenle/GIRCSE/HAR/data/cache/text_embeddings_ntu60_zsl.pt
-  description_cache: /data/chenle/GIRCSE/HAR/data/cache/rich_descriptions_ntu60.json
+  text_bank: /data/chenle/GIRCSE/HAR/data/cache/text_embeddings_ntu120_zsl.pt
+  description_cache: /data/chenle/GIRCSE/HAR/data/cache/rich_descriptions_ntu120.json
 
 dataset:
-  name: ntu60
+  name: ntu120
   source_format: npz
   split: zsl
-  num_classes: 60
+  num_classes: 120
   seen_classes: []
   unseen_classes: []
   skeleton_shape:

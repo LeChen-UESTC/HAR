@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
 from src.data.cache_manager import CacheManager
-from src.data.dataset import SkeletonDataset, safe_collate
+from src.data.dataset import NpzSkeletonDataset, SkeletonDataset, safe_collate
 from src.data.samplers import SamplingStrategy
 from src.utils.config_utils import (
     apply_overrides,
@@ -71,9 +71,14 @@ def initialize_run(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
-def build_cache_manager(config: dict[str, Any], logger: Any) -> CacheManager:
+def build_cache_manager(config: dict[str, Any], logger: Any) -> CacheManager | None:
     dataset_cfg = config["dataset"]
     paths = config["paths"]
+    cache_policy = str(dataset_cfg.get("cache_policy", "validate_or_rebuild")).lower()
+    if cache_policy in {"disabled", "none", "off"}:
+        logger.info("Cache disabled by dataset.cache_policy=%s", cache_policy)
+        return None
+
     strategy = SamplingStrategy.from_config(dataset_cfg.get("sampling_strategy", {}))
     manager = CacheManager(
         dataset_name=dataset_cfg["name"],
@@ -94,13 +99,56 @@ def build_dataloader(
     train: bool,
 ) -> DataLoader:
     train_cfg = config["train"] if train else config.get("eval", {})
-    dataset = SkeletonDataset(
-        manifest_path=config["paths"][manifest_key],
-        cache_manager=cache_manager,
-        allow_raw_fallback=bool(config["dataset"].get("allow_raw_fallback", True)),
-        skipped_log_path=Path(config.get("experiment", {}).get("log_root", "logs")) / "skipped_samples.log",
-        logger=logger,
-    )
+    dataset_cfg = config["dataset"]
+    paths = config["paths"]
+    skipped_log_path = Path(config.get("experiment", {}).get("log_root", "logs")) / "skipped_samples.log"
+    source_format = str(dataset_cfg.get("source_format", "manifest")).lower()
+
+    if source_format == "npz":
+        split_name = manifest_key.removeprefix("manifest_")
+        npz_path = (
+            paths.get(f"{split_name}_npz")
+            or paths.get("npz_data")
+            or paths.get("data_npz")
+        )
+        if not npz_path:
+            raise KeyError(
+                "dataset.source_format=npz requires paths.<split>_npz or paths.npz_data"
+            )
+        selected_classes = None
+        if str(dataset_cfg.get("split", "")).lower() == "zsl":
+            if split_name in {"train", "val"}:
+                selected_classes = dataset_cfg.get("seen_classes") or None
+            elif split_name == "test":
+                selected_classes = dataset_cfg.get("unseen_classes") or None
+
+        shape_cfg = dataset_cfg.get("skeleton_shape", {})
+        npz_cfg = dataset_cfg.get("npz", {})
+        dataset = NpzSkeletonDataset(
+            npz_path=npz_path,
+            x_key=str(npz_cfg.get("x_key", "x_data")),
+            y_key=str(npz_cfg.get("y_key", "y_data")),
+            channels=int(shape_cfg.get("channels", 3)),
+            joints=int(shape_cfg.get("joints", 25)),
+            persons=int(shape_cfg.get("persons", 2)),
+            selected_classes=selected_classes,
+            skipped_log_path=skipped_log_path,
+            logger=logger,
+        )
+        logger.info(
+            "Loaded npz dataset split=%s path=%s samples=%s",
+            split_name,
+            npz_path,
+            len(dataset),
+        )
+    else:
+        dataset = SkeletonDataset(
+            manifest_path=paths[manifest_key],
+            cache_manager=cache_manager,
+            allow_raw_fallback=bool(dataset_cfg.get("allow_raw_fallback", True)),
+            skipped_log_path=skipped_log_path,
+            logger=logger,
+        )
     sampler = None
     if get_world_size() > 1:
         sampler = DistributedSampler(dataset, shuffle=train)

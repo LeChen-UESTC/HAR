@@ -54,6 +54,10 @@ def load_config(path: str | Path) -> dict[str, Any]:
         base_path = Path(base_config)
         if not base_path.is_absolute():
             base_path = config_path.parent / base_path
+        elif not base_path.exists():
+            local_base_path = config_path.parent / base_path.name
+            if local_base_path.exists():
+                base_path = local_base_path
         base = load_config(base_path)
         config = deep_update(base, config)
 

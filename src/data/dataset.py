@@ -101,6 +101,123 @@ class SkeletonDataset:
         )
 
 
+class NpzSkeletonDataset:
+    def __init__(
+        self,
+        npz_path: str | Path,
+        x_key: str = "x_data",
+        y_key: str = "y_data",
+        channels: int = 3,
+        joints: int = 25,
+        persons: int = 2,
+        selected_classes: list[int] | None = None,
+        skipped_log_path: str | Path = "logs/skipped_samples.log",
+        logger: logging.Logger | None = None,
+    ) -> None:
+        import numpy as np
+
+        self.npz_path = Path(npz_path)
+        if not self.npz_path.exists():
+            raise FileNotFoundError(f"NPZ dataset file not found: {self.npz_path}")
+        self.payload = np.load(self.npz_path, allow_pickle=False)
+        if x_key not in self.payload or y_key not in self.payload:
+            raise KeyError(
+                f"NPZ file {self.npz_path} must contain keys {x_key!r} and {y_key!r}; "
+                f"found {self.payload.files}"
+            )
+        self.x_data = self.payload[x_key]
+        self.y_data = self.payload[y_key]
+        self.channels = int(channels)
+        self.joints = int(joints)
+        self.persons = int(persons)
+        self.skipped_log_path = Path(skipped_log_path)
+        self.skipped_log_path.parent.mkdir(parents=True, exist_ok=True)
+        self.logger = logger or logging.getLogger(__name__)
+
+        labels = self._labels_array()
+        if selected_classes:
+            selected = np.asarray(selected_classes, dtype=labels.dtype)
+            self.indices = np.flatnonzero(np.isin(labels, selected))
+        else:
+            self.indices = np.arange(labels.shape[0])
+
+    def __len__(self) -> int:
+        return int(self.indices.shape[0])
+
+    def __getitem__(self, index: int) -> dict[str, Any] | None:
+        real_index = int(self.indices[index])
+        sample_id = f"{self.npz_path.stem}:{real_index}"
+        try:
+            skeleton = self._convert_skeleton(self.x_data[real_index])
+            label = int(self._label_at(real_index))
+            return {
+                "skeleton": skeleton,
+                "label": label,
+                "sample_id": sample_id,
+                "index": index,
+            }
+        except Exception as exc:
+            self._record_skipped(sample_id, index, exc)
+            return None
+
+    def _labels_array(self):
+        import numpy as np
+
+        labels = np.asarray(self.y_data)
+        if labels.ndim == 2:
+            labels = labels.argmax(axis=1)
+        return labels.astype(np.int64)
+
+    def _label_at(self, real_index: int) -> int:
+        import numpy as np
+
+        label = np.asarray(self.y_data[real_index])
+        if label.ndim > 0 and label.size > 1:
+            return int(label.argmax())
+        return int(label)
+
+    def _convert_skeleton(self, sample: Any) -> Any:
+        import numpy as np
+
+        array = np.asarray(sample, dtype=np.float32)
+        if array.ndim == 2:
+            expected_dim = self.persons * self.joints * self.channels
+            if array.shape[1] != expected_dim:
+                raise ValueError(
+                    f"Expected flattened skeleton dim {expected_dim}, got {array.shape[1]}"
+                )
+            # Preprocessed NTU npz layout: [T, M * V * C].
+            return array.reshape(
+                array.shape[0],
+                self.persons,
+                self.joints,
+                self.channels,
+            ).transpose(3, 0, 2, 1)
+        if array.ndim == 4:
+            # Already in Shift-GCN layout: [C, T, V, M].
+            if (
+                array.shape[0] == self.channels
+                and array.shape[2] == self.joints
+                and array.shape[3] == self.persons
+            ):
+                return array
+            # Common preprocessed layout: [T, V, M, C].
+            if array.shape[-1] == self.channels:
+                return array.transpose(3, 0, 1, 2)
+        raise ValueError(f"Unsupported skeleton sample shape from npz: {array.shape}")
+
+    def _record_skipped(self, sample_id: str, index: int, exc: Exception) -> None:
+        message = f"{sample_id}\tindex={index}\t{type(exc).__name__}: {exc}\n"
+        with self.skipped_log_path.open("a", encoding="utf-8") as handle:
+            handle.write(message)
+        self.logger.warning(
+            "Skipped bad npz sample sample_id=%s error=%s",
+            sample_id,
+            exc,
+            extra={"sample_index": index},
+        )
+
+
 def load_skeleton_file(path: str | Path) -> Any:
     data_path = Path(path)
     if not data_path.exists():

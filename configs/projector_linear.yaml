@@ -1,7 +1,7 @@
-base_config: ntu60_zsl.yaml
+base_config: /data/chenle/GIRCSE/HAR/configs/ntu120_zsl.yaml
 
 experiment:
-  tags: ["ntu60", "projector-linear"]
+  tags: ["ntu120", "projector-linear"]
 
 model:
   projector:
