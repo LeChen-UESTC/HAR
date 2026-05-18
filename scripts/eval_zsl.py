@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 from __future__ import annotations
 
+import _bootstrap  # noqa: F401
+
 from pathlib import Path
 
 from src.evaluation.evaluator import evaluate_embedding_model, save_eval_outputs, select_text_classes

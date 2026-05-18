@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 from __future__ import annotations
 
+import _bootstrap  # noqa: F401
+
 from src.text_branch.generate_rich_description import generate_descriptions, load_class_names
 from src.train.common import parse_common_args
 from src.utils.config_utils import apply_overrides, load_config
