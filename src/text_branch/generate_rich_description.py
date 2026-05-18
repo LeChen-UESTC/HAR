@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -77,12 +78,22 @@ def generate_descriptions(
     dry_run: bool = False,
     runtime: dict[str, Any] | None = None,
 ) -> dict[str, dict[str, str]]:
+    logger = logging.getLogger(__name__)
+    output_path = Path(output_path)
+    logger.info(
+        "Generating rich descriptions: classes=%s model=%s output=%s",
+        len(class_names),
+        model_path,
+        output_path,
+    )
     output: dict[str, dict[str, str]] = {}
 
     if dry_run:
-        for label in class_names:
+        for label in _progress(class_names, desc="Generating descriptions"):
             output[label] = normalize_description_record(label)
+            save_descriptions(output, output_path)
         save_descriptions(output, output_path)
+        logger.info("Saved rich descriptions to %s", output_path)
         return output
 
     import torch
@@ -107,7 +118,7 @@ def generate_descriptions(
     model = AutoModelForCausalLM.from_pretrained(model_path, **model_kwargs)
     model.eval()
 
-    for label in class_names:
+    for label in _progress(class_names, desc="Generating descriptions"):
         prompt = generation_prompt(label)
         inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
         with torch.no_grad():
@@ -125,8 +136,10 @@ def generate_descriptions(
             record = {"label": label}
         record["label"] = label
         output[label] = normalize_description_record(record)
+        save_descriptions(output, output_path)
 
     save_descriptions(output, output_path)
+    logger.info("Saved rich descriptions to %s", output_path)
     return output
 
 
@@ -135,3 +148,12 @@ def save_descriptions(descriptions: dict[str, dict[str, str]], output_path: str 
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
         json.dump(descriptions, handle, indent=2, ensure_ascii=True, sort_keys=True)
+
+
+def _progress(items: list[str], desc: str):
+    try:
+        from tqdm import tqdm
+
+        return tqdm(items, desc=desc, unit="class")
+    except Exception:
+        return items
