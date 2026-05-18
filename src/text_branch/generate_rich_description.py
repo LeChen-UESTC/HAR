@@ -8,6 +8,25 @@ from typing import Any
 from .description_templates import generation_prompt, normalize_description_record
 
 
+REQUIRED_DESCRIPTION_FIELDS = (
+    "label",
+    "local_motion",
+    "used_object",
+    "target_object",
+    "environment",
+)
+INVALID_FIELD_VALUES = {
+    "",
+    "unknown",
+    "n/a",
+    "na",
+    "none specified",
+    "not specified",
+    "not applicable",
+    "null",
+}
+
+
 def load_class_names(path: str | Path, max_classes: int | None = None) -> list[str]:
     class_path = Path(path)
     class_names: list[str]
@@ -61,11 +80,20 @@ def load_class_names(path: str | Path, max_classes: int | None = None) -> list[s
 
 def parse_json_object(text: str) -> dict[str, Any]:
     text = text.strip()
-    start = text.find("{")
-    end = text.rfind("}")
-    if start >= 0 and end >= start:
-        text = text[start : end + 1]
-    return json.loads(text)
+    decoder = json.JSONDecoder()
+    parsed: list[dict[str, Any]] = []
+    for index, char in enumerate(text):
+        if char != "{":
+            continue
+        try:
+            value, _end = decoder.raw_decode(text[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            parsed.append(value)
+    if parsed:
+        return parsed[-1]
+    raise ValueError("No valid JSON object found in model output")
 
 
 def generate_descriptions(
@@ -77,6 +105,7 @@ def generate_descriptions(
     top_p: float = 0.9,
     dry_run: bool = False,
     runtime: dict[str, Any] | None = None,
+    max_retries: int = 3,
 ) -> dict[str, dict[str, str]]:
     logger = logging.getLogger(__name__)
     output_path = Path(output_path)
@@ -105,6 +134,8 @@ def generate_descriptions(
         model_path,
         trust_remote_code=bool(runtime.get("trust_remote_code", True)),
     )
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
     model_kwargs = {
         "torch_dtype": resolve_torch_dtype(
             runtime.get("torch_dtype", "bfloat16"),
@@ -118,9 +149,44 @@ def generate_descriptions(
     model = AutoModelForCausalLM.from_pretrained(model_path, **model_kwargs)
     model.eval()
 
+    failure_path = output_path.with_suffix(".failures.jsonl")
     for label in _progress(class_names, desc="Generating descriptions"):
-        prompt = generation_prompt(label)
-        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+        output[label] = generate_one_description(
+            label=label,
+            model=model,
+            tokenizer=tokenizer,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            max_retries=max_retries,
+            failure_path=failure_path,
+            logger=logger,
+        )
+        save_descriptions(output, output_path)
+
+    save_descriptions(output, output_path)
+    logger.info("Saved rich descriptions to %s", output_path)
+    return output
+
+
+def generate_one_description(
+    label: str,
+    model: Any,
+    tokenizer: Any,
+    max_new_tokens: int,
+    temperature: float,
+    top_p: float,
+    max_retries: int,
+    failure_path: Path,
+    logger: logging.Logger,
+) -> dict[str, str]:
+    import torch
+
+    feedback = None
+    attempts = max(1, int(max_retries))
+    for attempt in range(1, attempts + 1):
+        prompt = generation_prompt(label, feedback=feedback)
+        inputs = tokenize_generation_prompt(tokenizer, prompt, model)
         with torch.no_grad():
             output_ids = model.generate(
                 **inputs,
@@ -128,19 +194,120 @@ def generate_descriptions(
                 temperature=temperature,
                 top_p=top_p,
                 do_sample=temperature > 0,
+                pad_token_id=tokenizer.eos_token_id,
             )
-        decoded = tokenizer.decode(output_ids[0][inputs["input_ids"].shape[-1] :], skip_special_tokens=True)
+        decoded = tokenizer.decode(
+            output_ids[0][inputs["input_ids"].shape[-1] :],
+            skip_special_tokens=True,
+        )
         try:
             record = parse_json_object(decoded)
-        except Exception:
-            record = {"label": label}
-        record["label"] = label
-        output[label] = normalize_description_record(record)
-        save_descriptions(output, output_path)
+            record["label"] = label
+            normalized = normalize_description_record(record)
+            validate_description_record(normalized, label)
+            return normalized
+        except Exception as exc:
+            feedback = str(exc)
+            append_generation_failure(
+                failure_path=failure_path,
+                label=label,
+                attempt=attempt,
+                error=feedback,
+                raw_output=decoded,
+            )
+            logger.warning(
+                "Description generation failed label=%s attempt=%s/%s error=%s",
+                label,
+                attempt,
+                attempts,
+                feedback,
+            )
 
-    save_descriptions(output, output_path)
-    logger.info("Saved rich descriptions to %s", output_path)
-    return output
+    logger.warning(
+        "Using heuristic fallback description after %s failed attempts for label=%s",
+        attempts,
+        label,
+    )
+    return heuristic_description(label)
+
+
+def tokenize_generation_prompt(tokenizer: Any, prompt: str, model: Any) -> dict[str, Any]:
+    if getattr(tokenizer, "chat_template", None):
+        input_ids = tokenizer.apply_chat_template(
+            [{"role": "user", "content": prompt}],
+            add_generation_prompt=True,
+            return_tensors="pt",
+        )
+        return {"input_ids": input_ids.to(model.device)}
+    return tokenizer(prompt, return_tensors="pt").to(model.device)
+
+
+def validate_description_record(record: dict[str, str], label: str) -> None:
+    missing = [field for field in REQUIRED_DESCRIPTION_FIELDS if field not in record]
+    if missing:
+        raise ValueError(f"Missing required fields: {missing}")
+    for field in REQUIRED_DESCRIPTION_FIELDS:
+        value = str(record.get(field, "")).strip()
+        normalized = value.lower()
+        if normalized in INVALID_FIELD_VALUES:
+            raise ValueError(f"Invalid placeholder value for {field}: {value!r}")
+    if record["label"].strip().lower() != label.strip().lower():
+        raise ValueError(f"Label mismatch: expected {label!r}, got {record['label']!r}")
+    if len(record["local_motion"].split()) < 6:
+        raise ValueError("local_motion is too short to describe skeleton-visible motion")
+
+
+def append_generation_failure(
+    failure_path: Path,
+    label: str,
+    attempt: int,
+    error: str,
+    raw_output: str,
+) -> None:
+    failure_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "label": label,
+        "attempt": attempt,
+        "error": error,
+        "raw_output": raw_output,
+    }
+    with failure_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, ensure_ascii=True) + "\n")
+
+
+def heuristic_description(label: str) -> dict[str, str]:
+    lower = label.lower()
+    object_rules = [
+        ("brush teeth", "toothbrush", "teeth", "bathroom"),
+        ("drink", "cup or bottle", "drink", "kitchen or dining area"),
+        ("eat", "food or utensil", "meal", "kitchen or dining area"),
+        ("write", "pen", "paper", "office or classroom"),
+        ("typing", "keyboard", "computer", "room or office"),
+        ("phone", "phone", "ear or hand", "indoor or outdoor setting"),
+        ("glasses", "glasses", "face or eyes", "home"),
+        ("hat", "hat", "head", "home"),
+        ("shoe", "shoe", "foot", "home"),
+        ("bag", "bag", "body or shoulder", "home or public area"),
+    ]
+    used_object = "none"
+    target_object = "none"
+    environment = "indoor or everyday setting"
+    for keyword, used, target, env in object_rules:
+        if keyword in lower:
+            used_object = used
+            target_object = target
+            environment = env
+            break
+    return {
+        "label": label,
+        "local_motion": (
+            f"The person performs the action {label} with visible body posture "
+            "changes and coordinated limb movements over time."
+        ),
+        "used_object": used_object,
+        "target_object": target_object,
+        "environment": environment,
+    }
 
 
 def save_descriptions(descriptions: dict[str, dict[str, str]], output_path: str | Path) -> None:

@@ -57,9 +57,11 @@ dataset:
 text_branch:
   description_variant: full
   generation:
+    num_classes: 120
     max_new_tokens: 512
     temperature: 0.2
     top_p: 0.9
+    max_retries: 3
     dry_run: false
   embedding:
     prompt: "Instruct: Represent the semantic meaning of the following human action description for zero-shot skeleton action recognition.\nQuery: {rich_description}"

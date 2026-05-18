@@ -76,10 +76,11 @@ configs/ntu120_zsl_96_24.yaml
 `configs/ntu120_zsl_110_10.yaml`。如需切到其他划分，可直接把命令中的 `--config`
 替换为对应 split 配置，或新增一个继承该 split 的训练配置。
 
-生成富文本描述：
+生成全集富文本描述。该步骤只依赖 `index_action_map.json` 的 120 个动作标签，
+不依赖具体 ZSL split；生成结果供 NTU60/NTU120 及所有 split 共享。
 
 ```bash
-python scripts/generate_rich_description.py --config configs/ntu120_zsl_110_10.yaml
+python scripts/generate_rich_description.py --config configs/ntu120_zsl.yaml
 ```
 
 缓存文本 embedding：

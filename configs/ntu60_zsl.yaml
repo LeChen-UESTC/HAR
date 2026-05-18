@@ -26,7 +26,7 @@ paths:
   qwen_instruct_model: /data/chenle/GIRCSE/Qwen2.5-7B
   gircse_model: /data/chenle/GIRCSE/GIRCSE-QWEN7B
   text_bank: /data/chenle/GIRCSE/HAR/data/cache/text_embeddings_ntu60_zsl.pt
-  description_cache: /data/chenle/GIRCSE/HAR/data/cache/rich_descriptions_ntu60.json
+  description_cache: /data/chenle/GIRCSE/HAR/data/cache/rich_descriptions_ntu120.json
 
 dataset:
   name: ntu60
@@ -57,9 +57,11 @@ dataset:
 text_branch:
   description_variant: full
   generation:
+    num_classes: 120
     max_new_tokens: 512
     temperature: 0.2
     top_p: 0.9
+    max_retries: 3
     dry_run: false
   embedding:
     prompt: "Instruct: Represent the semantic meaning of the following human action description for zero-shot skeleton action recognition.\nQuery: {rich_description}"

@@ -13,11 +13,11 @@ from src.utils.config_utils import apply_overrides, load_config
 def main() -> None:
     args = parse_common_args("Generate rich action descriptions with Qwen2.5.")
     config = apply_overrides(load_config(args.config), args.override)
+    gen_cfg = config["text_branch"].get("generation", {})
     class_names = load_class_names(
         config["paths"]["class_names"],
-        max_classes=config.get("dataset", {}).get("num_classes"),
+        max_classes=gen_cfg.get("num_classes", config.get("dataset", {}).get("num_classes")),
     )
-    gen_cfg = config["text_branch"].get("generation", {})
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s | %(levelname)s | %(message)s",
@@ -34,6 +34,7 @@ def main() -> None:
         top_p=float(gen_cfg.get("top_p", 0.9)),
         dry_run=bool(gen_cfg.get("dry_run", False)),
         runtime=config.get("runtime", {}),
+        max_retries=int(gen_cfg.get("max_retries", 3)),
     )
 
 
