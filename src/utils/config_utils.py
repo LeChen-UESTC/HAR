@@ -132,6 +132,11 @@ def config_fingerprint(config: Mapping[str, Any], length: int = 10) -> str:
 
 def build_experiment_name(config: Mapping[str, Any]) -> str:
     dataset = get_nested(config, ["dataset", "name"], "dataset")
+    split_name = get_nested(
+        config,
+        ["dataset", "split_name"],
+        get_nested(config, ["dataset", "split"], "split"),
+    )
     modality = get_nested(config, ["model", "modality"], "skeleton")
     loss_type = get_nested(config, ["loss", "type"], "loss")
     proj_type = get_nested(config, ["model", "projector", "type"], "proj")
@@ -142,6 +147,9 @@ def build_experiment_name(config: Mapping[str, Any]) -> str:
     fp = config_fingerprint(
         {
             "dataset": dataset,
+            "split_name": split_name,
+            "seen_classes": get_nested(config, ["dataset", "seen_classes"], []),
+            "unseen_classes": get_nested(config, ["dataset", "unseen_classes"], []),
             "modality": modality,
             "loss": loss_type,
             "projector": get_nested(config, ["model", "projector"], {}),
@@ -151,7 +159,7 @@ def build_experiment_name(config: Mapping[str, Any]) -> str:
         }
     )
     raw = (
-        f"{stage}-{dataset}-modality_{modality}-loss_{loss_type}-"
+        f"{stage}-{dataset}-split_{split_name}-modality_{modality}-loss_{loss_type}-"
         f"proj_{proj_type}-dim_{proj_dim}-K_{k_train}-{fp}-{stamp}"
     )
     return sanitize_name(raw)

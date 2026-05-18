@@ -63,22 +63,35 @@ pip install -r requirements.txt
 
 ## 快速启动
 
+已提供四个 PURLS/SynSE-style ZSL 类别划分配置：
+
+```text
+configs/ntu60_zsl_55_5.yaml
+configs/ntu60_zsl_48_12.yaml
+configs/ntu120_zsl_110_10.yaml
+configs/ntu120_zsl_96_24.yaml
+```
+
+`configs/train_warmup.yaml`、`configs/train_gircse.yaml` 和 projector 消融配置默认继承
+`configs/ntu120_zsl_110_10.yaml`。如需切到其他划分，可直接把命令中的 `--config`
+替换为对应 split 配置，或新增一个继承该 split 的训练配置。
+
 生成富文本描述：
 
 ```bash
-python scripts/generate_rich_description.py --config configs/ntu120_zsl.yaml
+python scripts/generate_rich_description.py --config configs/ntu120_zsl_110_10.yaml
 ```
 
 缓存文本 embedding：
 
 ```bash
-python scripts/cache_text_bank.py --config configs/ntu120_zsl.yaml
+python scripts/cache_text_bank.py --config configs/ntu120_zsl_110_10.yaml
 ```
 
 Stage 0 Shift-GCN 预训练：
 
 ```bash
-python scripts/train_shiftgcn_seen.py --config configs/ntu120_zsl.yaml
+python scripts/train_shiftgcn_seen.py --config configs/ntu120_zsl_110_10.yaml
 ```
 
 Stage 1 预对齐 warmup：
@@ -104,9 +117,9 @@ python scripts/train_skeleton_gircse.py --config configs/projector_part_aware_qf
 ZSL/GZSL 评估：
 
 ```bash
-python scripts/eval_zsl.py --config configs/ntu120_zsl.yaml
-python scripts/eval_gzsl.py --config configs/ntu120_zsl.yaml
-python scripts/eval_k_scaling.py --config configs/ntu120_zsl.yaml
+python scripts/eval_zsl.py --config configs/ntu120_zsl_110_10.yaml
+python scripts/eval_gzsl.py --config configs/ntu120_zsl_110_10.yaml
+python scripts/eval_k_scaling.py --config configs/ntu120_zsl_110_10.yaml
 ```
 
 绘制本地曲线：

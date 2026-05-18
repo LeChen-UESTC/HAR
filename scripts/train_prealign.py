@@ -7,6 +7,7 @@ from pathlib import Path
 
 import torch
 
+from src.evaluation.evaluator import select_text_classes
 from src.losses.classwise_infonce import classwise_infonce
 from src.train.common import (
     build_cache_manager,
@@ -38,6 +39,11 @@ def main() -> None:
     model = build_warmup_model(config).to(device)
     optimizer = build_optimizer(config, model)
     z_text, class_ids = load_text_bank(config["paths"]["text_bank"], device)
+    z_text, class_ids = select_text_classes(
+        z_text,
+        class_ids,
+        config.get("dataset", {}).get("seen_classes") or None,
+    )
     temperature = float(config["loss"].get("temperature", 0.05))
     use_amp = config["train"].get("mixed_precision", "none") in {"fp16", "bf16"}
     scaler = torch.cuda.amp.GradScaler(enabled=use_amp and torch.cuda.is_available())

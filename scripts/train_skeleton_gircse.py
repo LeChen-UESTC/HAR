@@ -7,7 +7,7 @@ from pathlib import Path
 
 import torch
 
-from src.evaluation.evaluator import evaluate_embedding_model
+from src.evaluation.evaluator import evaluate_embedding_model, select_text_classes
 from src.losses.stepwise_infonce import stepwise_infonce
 from src.train.common import (
     build_cache_manager,
@@ -43,6 +43,11 @@ def main() -> None:
     model = build_skeleton_gircse_model(config).to(device)
     optimizer = build_optimizer(config, model)
     z_text, class_ids = load_text_bank(config["paths"]["text_bank"], device)
+    z_text, class_ids = select_text_classes(
+        z_text,
+        class_ids,
+        config.get("dataset", {}).get("seen_classes") or None,
+    )
     temperature = float(config["loss"].get("temperature", 0.05))
     lambda_irr = float(config["loss"].get("lambda_irr", 1.0))
     use_amp = config["train"].get("mixed_precision", "none") in {"fp16", "bf16"}
