@@ -20,7 +20,7 @@ from src.train.common import (
     select_device,
 )
 from src.train.factory import build_optimizer, build_skeleton_gircse_model
-from src.utils.checkpoint import save_checkpoint
+from src.utils.checkpoint import load_checkpoint, save_checkpoint
 from src.utils.distributed import is_main_process
 from src.utils.metrics import append_jsonl
 from src.utils.wandb_utils import wandb_log
@@ -48,6 +48,9 @@ def main() -> None:
         )
 
     model = build_skeleton_gircse_model(config).to(device)
+    if args.checkpoint:
+        load_checkpoint(args.checkpoint, model, map_location=str(device), strict=False)
+        logger.info("Loaded warmup checkpoint: %s", args.checkpoint)
     optimizer = build_optimizer(config, model)
     z_text, class_ids = load_text_bank(config["paths"]["text_bank"], device)
     z_text, class_ids = select_text_classes(
@@ -59,6 +62,9 @@ def main() -> None:
     lambda_irr = float(config["loss"].get("lambda_irr", 1.0))
     use_amp = config["train"].get("mixed_precision", "none") in {"fp16", "bf16"}
     scaler = torch.cuda.amp.GradScaler(enabled=use_amp and torch.cuda.is_available())
+    grad_accum_steps = int(config["train"].get("gradient_accumulation_steps", 1))
+    if grad_accum_steps < 1:
+        raise ValueError(f"gradient_accumulation_steps must be >= 1, got {grad_accum_steps}")
     metrics_path = Path(dirs["model_dir"]) / "metrics.jsonl"
     best_top1 = -1.0
 
@@ -67,11 +73,11 @@ def main() -> None:
         total_loss = 0.0
         total = 0
         running_logs: dict[str, float] = {}
+        optimizer.zero_grad(set_to_none=True)
         for step, batch in enumerate(train_loader, start=1):
             batch = move_batch_to_device(batch, device)
             if batch is None:
                 continue
-            optimizer.zero_grad(set_to_none=True)
             with maybe_autocast(use_amp, config["train"].get("mixed_precision", "fp16")):
                 z_steps, _z_final = model(batch["skeleton"])
                 loss, logs = stepwise_infonce(
@@ -82,13 +88,18 @@ def main() -> None:
                     lambda_irr=lambda_irr,
                     class_ids=class_ids,
                 )
-            scaler.scale(loss).backward()
-            grad_clip = config["train"].get("grad_clip_norm")
-            if grad_clip:
-                scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(model.parameters(), float(grad_clip))
-            scaler.step(optimizer)
-            scaler.update()
+                loss_for_backward = loss / grad_accum_steps
+            scaler.scale(loss_for_backward).backward()
+
+            should_step = step % grad_accum_steps == 0
+            if should_step:
+                grad_clip = config["train"].get("grad_clip_norm")
+                if grad_clip:
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), float(grad_clip))
+                scaler.step(optimizer)
+                scaler.update()
+                optimizer.zero_grad(set_to_none=True)
 
             batch_size = batch["label"].numel()
             total_loss += float(loss.detach()) * batch_size
@@ -97,6 +108,15 @@ def main() -> None:
                 running_logs[key] = running_logs.get(key, 0.0) + float(value) * batch_size
             if step % int(config["train"].get("log_freq", 20)) == 0 and is_main_process():
                 logger.info("epoch=%s step=%s loss=%.6f", epoch, step, float(loss.detach()))
+
+        if len(train_loader) % grad_accum_steps != 0:
+            grad_clip = config["train"].get("grad_clip_norm")
+            if grad_clip:
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), float(grad_clip))
+            scaler.step(optimizer)
+            scaler.update()
+            optimizer.zero_grad(set_to_none=True)
 
         metrics = {"epoch": epoch, "train_loss": total_loss / max(total, 1)}
         metrics.update({key: value / max(total, 1) for key, value in running_logs.items()})

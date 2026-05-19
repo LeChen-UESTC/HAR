@@ -78,6 +78,11 @@ def build_skeleton_gircse_model(config: dict[str, Any]) -> SkeletonGIRCSE:
     if config.get("train", {}).get("freeze_lm_head", True) and hasattr(llm, "lm_head"):
         for param in llm.lm_head.parameters():
             param.requires_grad = False
+    if config.get("train", {}).get("gradient_checkpointing", False):
+        if hasattr(llm, "gradient_checkpointing_enable"):
+            llm.gradient_checkpointing_enable()
+        if hasattr(llm, "config"):
+            llm.config.use_cache = False
 
     expected_dim = int(config["model"]["projector"]["llm_dim"])
     actual_dim = int(llm.config.hidden_size)

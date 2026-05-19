@@ -149,8 +149,15 @@ python scripts/train_prealign.py --config configs/train_warmup_ntu120_110_10.yam
 Stage 2 Skeleton-GIRCSE 训练：
 
 ```bash
-python scripts/train_skeleton_gircse.py --config configs/train_gircse_ntu120_110_10.yaml --wandb_mode offline
+python scripts/train_skeleton_gircse.py \
+  --config configs/train_gircse_ntu120_110_10.yaml \
+  --checkpoint /data/chenle/GIRCSE/HAR/outputs/models/<stage1_exp_name>/last.ckpt \
+  --wandb_mode offline
 ```
+
+Stage 2 会反向穿过冻结的 Qwen/GIRCSE 到 skeleton prefix，因此默认使用
+`batch_size=1`、`gradient_accumulation_steps=8` 和 gradient checkpointing 来控制显存；
+等效 batch size 仍是 8。
 
 Projector 消融配置：
 
