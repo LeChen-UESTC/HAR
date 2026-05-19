@@ -47,7 +47,17 @@ def main() -> None:
             "Point pretrained_path to the official Shift-GCN checkpoint used as the skeleton encoder."
         )
 
-    model = build_skeleton_gircse_model(config).to(device)
+    model = build_skeleton_gircse_model(config)
+    if config.get("runtime", {}).get("device_map_train") is not None:
+        model.shift_gcn.to(device)
+        model.token_projector.to(device)
+        logger.info(
+            "Using device_map_train=%s for GIRCSE LLM; trainable skeleton modules are on %s",
+            config.get("runtime", {}).get("device_map_train"),
+            device,
+        )
+    else:
+        model.to(device)
     if args.checkpoint:
         load_checkpoint(args.checkpoint, model, map_location=str(device), strict=False)
         logger.info("Loaded warmup checkpoint: %s", args.checkpoint)

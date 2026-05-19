@@ -59,3 +59,7 @@ class SoftTokenGenerator(nn.Module):
         if isinstance(weight, nn.Embedding):
             return weight.weight
         return weight
+
+    @property
+    def input_device(self) -> torch.device:
+        return self._embedding_weight().device

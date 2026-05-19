@@ -1,5 +1,8 @@
 base_config: /data/chenle/GIRCSE/HAR/configs/ntu120_zsl_110_10.yaml
 
+runtime:
+  device_map_train: auto
+
 experiment:
   tags: ["ntu120", "110-10", "generative", "stepwise", "irr"]
 

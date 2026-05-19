@@ -23,9 +23,11 @@ class SkeletonGIRCSE(nn.Module):
     def forward(self, skeleton: torch.Tensor) -> tuple[list[torch.Tensor], torch.Tensor]:
         feat = self.shift_gcn.forward_features(skeleton)
         skeleton_tokens = self.token_projector(feat)
+        llm_input_device = getattr(self.soft_token_generator, "input_device", skeleton_tokens.device)
+        skeleton_tokens = skeleton_tokens.to(llm_input_device)
         prompt_tokens = self.prompt_builder.build(
             batch_size=skeleton_tokens.shape[0],
-            device=skeleton_tokens.device,
+            device=llm_input_device,
         )
         input_embeds = torch.cat([prompt_tokens, skeleton_tokens], dim=1)
         return self.soft_token_generator(input_embeds)

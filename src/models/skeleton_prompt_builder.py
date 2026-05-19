@@ -14,9 +14,10 @@ class SkeletonPromptBuilder:
 
     def build(self, batch_size: int, device: torch.device) -> torch.Tensor:
         encoded = self.tokenizer(self.prompt_text, return_tensors="pt", add_special_tokens=True)
-        input_ids = encoded["input_ids"].to(device)
+        embedding_device = self.token_embedding.weight.device
+        input_ids = encoded["input_ids"].to(embedding_device)
         embeds = self.token_embedding(input_ids)
-        return embeds.expand(batch_size, -1, -1).contiguous()
+        return embeds.to(device).expand(batch_size, -1, -1).contiguous()
 
 
 class StaticPromptEmbeddings:

@@ -81,7 +81,7 @@ def gircse_iterative_soft_generation(
             model_inputs["past_key_values"] = past_key_values
 
         outputs = llm(**model_inputs)
-        logits = outputs.logits[:, -1, :]
+        logits = outputs.logits[:, -1, :].to(embedding_weight.device)
         last_hidden = outputs.hidden_states[-1][:, -1:, :]
         next_token_embedding = gircse_soft_next_token_embedding(
             logits=logits,

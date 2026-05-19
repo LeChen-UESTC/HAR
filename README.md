@@ -149,15 +149,23 @@ python scripts/train_prealign.py --config configs/train_warmup_ntu120_110_10.yam
 Stage 2 Skeleton-GIRCSE 训练：
 
 ```bash
-python scripts/train_skeleton_gircse.py \
-  --config configs/train_gircse_ntu120_110_10.yaml \
-  --checkpoint /data/chenle/GIRCSE/HAR/outputs/models/<stage1_exp_name>/last.ckpt \
+CUDA_VISIBLE_DEVICES=1 python scripts/train_skeleton_gircse.py \
+  --config configs/train_gircse_ntu60_55_5.yaml \
+  --checkpoint /data/chenle/GIRCSE/HAR/outputs/models/prealign-ntu60-split_55_5-modality_skeleton-loss_classwise_infonce-proj_part_aware_qformer-dim_3584-K_5-6e50a0d2fe-20260519_083938/last.ckpt \
   --wandb_mode offline
 ```
 
 Stage 2 会反向穿过冻结的 Qwen/GIRCSE 到 skeleton prefix，因此默认使用
-`batch_size=1`、`gradient_accumulation_steps=8` 和 gradient checkpointing 来控制显存；
-等效 batch size 仍是 8。
+`device_map_train=auto`、`batch_size=1`、`gradient_accumulation_steps=8` 和
+gradient checkpointing 来控制显存；等效 batch size 仍是 8。建议至少暴露两张空闲 GPU：
+
+```bash
+CUDA_VISIBLE_DEVICES=1,2 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+python scripts/train_skeleton_gircse.py \
+  --config configs/train_gircse_ntu60_55_5.yaml \
+  --checkpoint /data/chenle/GIRCSE/HAR/outputs/models/<stage1_exp_name>/last.ckpt \
+  --wandb_mode offline
+```
 
 Projector 消融配置：
 
