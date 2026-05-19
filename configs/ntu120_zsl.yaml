@@ -85,7 +85,7 @@ model:
     hidden_dim: 256
     out_dim: 256
     dropout: 0.1
-    pretrained_path: null
+    pretrained_path: /data/chenle/GIRCSE/HAR/models/shift_gcn_ntu120_xsub.pt
     freeze: false
   projector:
     type: part_aware_qformer

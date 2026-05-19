@@ -50,8 +50,10 @@ PyTorch 0.4/CUDA 9 时代的插件。
 
 - GIRCSE-Qwen7B: `/data/chenle/GIRCSE/GIRCSE-QWEN7B`
 - Qwen2.5-7B-Instruct: `/data/chenle/GIRCSE/Qwen2.5-7B`
-- Stage 0 seen-only Shift-GCN checkpoint, NTU120 110/10:
-  `/data/chenle/GIRCSE/HAR/outputs/models/shift_gcn_seen_ntu120_110_10.ckpt`
+- NTU120 official Shift-GCN xsub checkpoint:
+  `/data/chenle/GIRCSE/HAR/models/shift_gcn_ntu120_xsub.pt`
+- NTU60 official Shift-GCN xsub checkpoint:
+  `/data/chenle/GIRCSE/HAR/models/shift_gcn_ntu60_xsub.pt`
 
 `GIRCSE-Qwen7B` 是 LoRA adapter 目录，不是完整基座模型。代码会显式加载
 `/data/chenle/GIRCSE/Qwen2.5-7B` 作为本地 base model，再挂载
@@ -59,13 +61,8 @@ PyTorch 0.4/CUDA 9 时代的插件。
 
 本地不要求存在这些模型目录；部署到服务器后按配置运行即可。
 
-主实验不要直接使用官方发布的 NTU 全类别 Shift-GCN 权重，因为它们用完整 60/120
-类监督训练，会对 ZSL unseen classes 造成标签泄漏。默认流程使用官方 Shift-GCN 架构，
-先在 seen classes 上运行 Stage 0，并把 seen-only checkpoint 保存到上述 `outputs/models`
-路径，Stage 1/2 再加载它。
-
-如果只是做工程 smoke test 或 leaky upper-bound，可临时把官方权重放到 `models/`
-目录并通过 `--override model.shift_gcn.pretrained_path=...` 指定：
+默认把官方 Shift-GCN 发布权重作为冻结 skeleton encoder 使用。权重文件不提交到 Git，
+服务器上需要先放到上述 `models/` 路径。如果从官方仓库下载，可按下面的命名拷贝：
 
 ```bash
 mkdir -p /data/chenle/GIRCSE/HAR/models
@@ -125,14 +122,13 @@ python scripts/generate_rich_description.py --config configs/ntu120_zsl.yaml
 python scripts/cache_text_bank.py --config configs/ntu120_zsl_110_10.yaml
 ```
 
-Stage 0 Shift-GCN 预训练：
+Stage 0 Shift-GCN 预训练是可选项。默认配置已经使用官方 Shift-GCN 权重作为 encoder，
+通常可以直接跳到 Stage 1：
 
 ```bash
 python scripts/train_shiftgcn_seen.py --config configs/ntu120_zsl_110_10.yaml
 ```
 
-该命令会额外写出稳定路径：
-`/data/chenle/GIRCSE/HAR/outputs/models/shift_gcn_seen_ntu120_110_10.ckpt`。
 Stage 1/Stage 2 默认冻结 Shift-GCN，只训练 Skeleton Q-Former projector。
 
 Stage 1 预对齐 warmup：

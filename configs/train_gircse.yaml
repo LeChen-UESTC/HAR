@@ -19,7 +19,3 @@ loss:
   type: stepwise_infonce_irr
   temperature: 0.05
   lambda_irr: 1.0
-
-model:
-  shift_gcn:
-    pretrained_path: /data/chenle/GIRCSE/HAR/outputs/models/shift_gcn_seen_ntu120_110_10.ckpt

@@ -113,7 +113,7 @@ def _validate_frozen_shift_gcn_checkpoint(config: dict[str, Any]) -> None:
     if train_cfg.get("freeze_shift_gcn", False) and not shift_cfg.get("pretrained_path"):
         raise ValueError(
             "train.freeze_shift_gcn=true requires model.shift_gcn.pretrained_path. "
-            "Run Stage 0 first, then point pretrained_path to the seen-only Shift-GCN checkpoint."
+            "Point pretrained_path to the official Shift-GCN checkpoint used as the skeleton encoder."
         )
 
 

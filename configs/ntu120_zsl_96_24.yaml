@@ -3,9 +3,6 @@ base_config: /data/chenle/GIRCSE/HAR/configs/ntu120_zsl.yaml
 experiment:
   tags: ["ntu120", "zsl", "96-24", "synse-purls"]
 
-paths:
-  shift_gcn_seen_checkpoint: /data/chenle/GIRCSE/HAR/outputs/models/shift_gcn_seen_ntu120_96_24.ckpt
-
 dataset:
   split_protocol: synse_purls
   split_name: "96_24"

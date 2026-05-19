@@ -4,8 +4,6 @@ experiment:
   tags: ["ntu120", "110-10", "projector-linear"]
 
 model:
-  shift_gcn:
-    pretrained_path: /data/chenle/GIRCSE/HAR/outputs/models/shift_gcn_seen_ntu120_110_10.ckpt
   projector:
     type: linear
     in_dim: 256

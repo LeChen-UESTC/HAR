@@ -4,7 +4,5 @@ experiment:
   tags: ["ntu120", "110-10", "projector-part-aware-qformer"]
 
 model:
-  shift_gcn:
-    pretrained_path: /data/chenle/GIRCSE/HAR/outputs/models/shift_gcn_seen_ntu120_110_10.ckpt
   projector:
     type: part_aware_qformer
