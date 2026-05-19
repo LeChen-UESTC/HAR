@@ -122,13 +122,6 @@ python scripts/generate_rich_description.py --config configs/ntu120_zsl.yaml
 python scripts/cache_text_bank.py --config configs/ntu120_zsl_110_10.yaml
 ```
 
-Stage 0 Shift-GCN 预训练是可选项。默认配置已经使用官方 Shift-GCN 权重作为 encoder，
-通常可以直接跳到 Stage 1：
-
-```bash
-python scripts/train_shiftgcn_seen.py --config configs/ntu120_zsl_110_10.yaml
-```
-
 Stage 1/Stage 2 默认冻结 Shift-GCN，只训练 Skeleton Q-Former projector。
 
 Stage 1 预对齐 warmup：
