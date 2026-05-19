@@ -106,8 +106,19 @@ configs/ntu120_zsl_96_24.yaml
 ```
 
 `configs/train_warmup.yaml`、`configs/train_gircse.yaml` 和 projector 消融配置默认继承
-`configs/ntu120_zsl_110_10.yaml`。如需切到其他划分，可直接把命令中的 `--config`
-替换为对应 split 配置，或新增一个继承该 split 的训练配置。
+`configs/ntu120_zsl_110_10.yaml`，只作为默认别名保留。正式运行建议使用下面这些显式
+Stage 1/Stage 2 配置，避免 NTU60/NTU120 和 split 混用：
+
+```text
+configs/train_warmup_ntu120_110_10.yaml
+configs/train_gircse_ntu120_110_10.yaml
+configs/train_warmup_ntu120_96_24.yaml
+configs/train_gircse_ntu120_96_24.yaml
+configs/train_warmup_ntu60_55_5.yaml
+configs/train_gircse_ntu60_55_5.yaml
+configs/train_warmup_ntu60_48_12.yaml
+configs/train_gircse_ntu60_48_12.yaml
+```
 
 生成全集富文本描述。该步骤只依赖 `index_action_map.json` 的 120 个动作标签，
 不依赖具体 ZSL split；生成结果供 NTU60/NTU120 及所有 split 共享。
@@ -127,13 +138,13 @@ Stage 1/Stage 2 默认冻结 Shift-GCN，只训练 Skeleton Q-Former projector�
 Stage 1 预对齐 warmup：
 
 ```bash
-python scripts/train_prealign.py --config configs/train_warmup.yaml
+python scripts/train_prealign.py --config configs/train_warmup_ntu120_110_10.yaml
 ```
 
 Stage 2 Skeleton-GIRCSE 训练：
 
 ```bash
-python scripts/train_skeleton_gircse.py --config configs/train_gircse.yaml --wandb_mode offline
+python scripts/train_skeleton_gircse.py --config configs/train_gircse_ntu120_110_10.yaml --wandb_mode offline
 ```
 
 Projector 消融配置：

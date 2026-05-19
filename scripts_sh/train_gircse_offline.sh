@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONFIG="${1:-configs/train_gircse.yaml}"
+CONFIG="${1:-configs/train_gircse_ntu120_110_10.yaml}"
 
 python scripts/train_skeleton_gircse.py \
   --config "${CONFIG}" \
