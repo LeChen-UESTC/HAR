@@ -133,6 +133,9 @@ python scripts/generate_rich_description.py --config configs/ntu120_zsl.yaml
 python scripts/cache_text_bank.py --config configs/ntu120_zsl_110_10.yaml
 ```
 
+NTU60 直接复用上述 NTU120 text bank；配置会按 split 中的 class id 只取前 60 类里的
+seen/unseen 候选，不需要额外生成 `text_embeddings_ntu60_zsl.pt`。
+
 Stage 1/Stage 2 默认冻结 Shift-GCN，只训练 Skeleton Q-Former projector。
 
 Stage 1 预对齐 warmup：
