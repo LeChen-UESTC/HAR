@@ -4,9 +4,11 @@ experiment:
   tags: ["ntu120", "110-10", "projector-general-qformer"]
 
 model:
+  shift_gcn:
+    pretrained_path: /data/chenle/GIRCSE/HAR/outputs/models/shift_gcn_seen_ntu120_110_10.ckpt
   projector:
     type: qformer
-    in_dim: 512
+    in_dim: 256
     llm_dim: 4096
     num_query_tokens: 7
     query_roles:

@@ -85,6 +85,9 @@ def main() -> None:
         append_jsonl(metrics_path, metrics)
         wandb_log(ctx["wandb_run"], metrics, step=epoch)
         save_checkpoint(Path(dirs["model_dir"]) / "last.ckpt", model, optimizer=optimizer, epoch=epoch, metrics=metrics)
+        stable_checkpoint = config.get("paths", {}).get("shift_gcn_seen_checkpoint")
+        if stable_checkpoint:
+            save_checkpoint(stable_checkpoint, model, optimizer=optimizer, epoch=epoch, metrics=metrics)
         if epoch % int(config["train"].get("save_freq", 1)) == 0:
             save_checkpoint(Path(dirs["model_dir"]) / f"epoch_{epoch}.ckpt", model, optimizer=optimizer, epoch=epoch, metrics=metrics)
 

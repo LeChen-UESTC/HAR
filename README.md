@@ -30,18 +30,50 @@ Q-Former projector 使用 Salesforce LAVIS 的 BLIP-2 Q-Former 实现：
 `head`、`left_arm`、`right_arm`、`torso`、`left_leg`、`right_leg`、`global`。
 本版本只做 Part-aware Query Initialization + Global Cross-Attention，不启用 `L_part` 弱监督。
 
+## Shift-GCN 官方代码来源
+
+骨架 encoder 默认使用官方 Shift-GCN 结构：
+
+- Source: https://github.com/kchengiva/Shift-GCN
+- Vendored path: `src/third_party/shift_gcn/`
+- License: Creative Commons Attribution-NonCommercial 4.0 International,
+  copied in `src/third_party/shift_gcn/LICENSE.txt`
+
+本仓库保留官方 `l1`-`l10`、Shift-GCN spatial shift、分类头命名，以兼容官方
+`.pt` 权重；同时新增 `forward_features()`，输出进入 Skeleton Q-Former 的特征图。
+官方仓库的旧 CUDA temporal shift 扩展被替换为纯 PyTorch fallback，避免服务器重新编译
+PyTorch 0.4/CUDA 9 时代的插件。
+
 ## 服务器模型路径
 
 默认配置已写入服务器路径：
 
 - GIRCSE-Qwen7B: `/data/chenle/GIRCSE/GIRCSE-QWEN7B`
 - Qwen2.5-7B-Instruct: `/data/chenle/GIRCSE/Qwen2.5-7B`
+- Stage 0 seen-only Shift-GCN checkpoint, NTU120 110/10:
+  `/data/chenle/GIRCSE/HAR/outputs/models/shift_gcn_seen_ntu120_110_10.ckpt`
 
 `GIRCSE-Qwen7B` 是 LoRA adapter 目录，不是完整基座模型。代码会显式加载
 `/data/chenle/GIRCSE/Qwen2.5-7B` 作为本地 base model，再挂载
 `/data/chenle/GIRCSE/GIRCSE-QWEN7B` adapter，避免服务器无外网时误连 Hugging Face Hub。
 
 本地不要求存在这些模型目录；部署到服务器后按配置运行即可。
+
+主实验不要直接使用官方发布的 NTU 全类别 Shift-GCN 权重，因为它们用完整 60/120
+类监督训练，会对 ZSL unseen classes 造成标签泄漏。默认流程使用官方 Shift-GCN 架构，
+先在 seen classes 上运行 Stage 0，并把 seen-only checkpoint 保存到上述 `outputs/models`
+路径，Stage 1/2 再加载它。
+
+如果只是做工程 smoke test 或 leaky upper-bound，可临时把官方权重放到 `models/`
+目录并通过 `--override model.shift_gcn.pretrained_path=...` 指定：
+
+```bash
+mkdir -p /data/chenle/GIRCSE/HAR/models
+cp /path/to/Shift-GCN/save_models/ntu120_ShiftGCN_joint_xsub.pt \
+  /data/chenle/GIRCSE/HAR/models/shift_gcn_ntu120_xsub.pt
+cp /path/to/Shift-GCN/save_models/ntu_ShiftGCN_joint_xsub.pt \
+  /data/chenle/GIRCSE/HAR/models/shift_gcn_ntu60_xsub.pt
+```
 
 默认数据配置使用已经预处理好的 NTU `.npz` 文件：
 
@@ -98,6 +130,10 @@ Stage 0 Shift-GCN 预训练：
 ```bash
 python scripts/train_shiftgcn_seen.py --config configs/ntu120_zsl_110_10.yaml
 ```
+
+该命令会额外写出稳定路径：
+`/data/chenle/GIRCSE/HAR/outputs/models/shift_gcn_seen_ntu120_110_10.ckpt`。
+Stage 1/Stage 2 默认冻结 Shift-GCN，只训练 Skeleton Q-Former projector。
 
 Stage 1 预对齐 warmup：
 

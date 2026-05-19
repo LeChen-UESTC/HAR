@@ -50,6 +50,7 @@ def build_projector(config: dict[str, Any]) -> nn.Module:
 
 
 def build_warmup_model(config: dict[str, Any]) -> WarmupSkeletonTextModel:
+    _validate_frozen_shift_gcn_checkpoint(config)
     shift_gcn = build_shift_gcn_from_config(config)
     if config.get("train", {}).get("freeze_shift_gcn", False):
         for param in shift_gcn.parameters():
@@ -59,6 +60,9 @@ def build_warmup_model(config: dict[str, Any]) -> WarmupSkeletonTextModel:
 
 def build_skeleton_gircse_model(config: dict[str, Any]) -> SkeletonGIRCSE:
     shift_gcn = build_shift_gcn_from_config(config)
+    if config.get("train", {}).get("freeze_shift_gcn", False):
+        for param in shift_gcn.parameters():
+            param.requires_grad = False
     projector = build_projector(config)
     paths = config["paths"]
     llm, tokenizer = load_gircse_model_and_tokenizer(
@@ -101,6 +105,16 @@ def build_skeleton_gircse_model(config: dict[str, Any]) -> SkeletonGIRCSE:
         soft_token_generator=generator,
         prompt_builder=prompt_builder,
     )
+
+
+def _validate_frozen_shift_gcn_checkpoint(config: dict[str, Any]) -> None:
+    train_cfg = config.get("train", {})
+    shift_cfg = config.get("model", {}).get("shift_gcn", {})
+    if train_cfg.get("freeze_shift_gcn", False) and not shift_cfg.get("pretrained_path"):
+        raise ValueError(
+            "train.freeze_shift_gcn=true requires model.shift_gcn.pretrained_path. "
+            "Run Stage 0 first, then point pretrained_path to the seen-only Shift-GCN checkpoint."
+        )
 
 
 def build_optimizer(config: dict[str, Any], model: nn.Module) -> torch.optim.Optimizer:

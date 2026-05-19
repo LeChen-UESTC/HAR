@@ -40,6 +40,13 @@ def main() -> None:
     if config["train"].get("eval_during_train", False):
         val_loader = build_dataloader(config, "manifest_val", cache_manager, logger, train=False)
 
+    shift_cfg = config.get("model", {}).get("shift_gcn", {})
+    if config["train"].get("freeze_shift_gcn", False) and not shift_cfg.get("pretrained_path"):
+        raise ValueError(
+            "train.freeze_shift_gcn=true requires model.shift_gcn.pretrained_path. "
+            "Run Stage 0 first, then point pretrained_path to the seen-only Shift-GCN checkpoint."
+        )
+
     model = build_skeleton_gircse_model(config).to(device)
     optimizer = build_optimizer(config, model)
     z_text, class_ids = load_text_bank(config["paths"]["text_bank"], device)

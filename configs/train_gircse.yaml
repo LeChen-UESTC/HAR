@@ -9,6 +9,7 @@ train:
   batch_size: 8
   lr_projector: 0.0001
   lr_shift_gcn: 0.00001
+  freeze_shift_gcn: true
   freeze_llm: true
   freeze_lm_head: true
   eval_during_train: false
@@ -18,3 +19,7 @@ loss:
   type: stepwise_infonce_irr
   temperature: 0.05
   lambda_irr: 1.0
+
+model:
+  shift_gcn:
+    pretrained_path: /data/chenle/GIRCSE/HAR/outputs/models/shift_gcn_seen_ntu120_110_10.ckpt

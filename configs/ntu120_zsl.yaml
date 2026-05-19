@@ -76,17 +76,20 @@ model:
   name: skeleton_gircse
   modality: skeleton
   shift_gcn:
+    type: official_shift_gcn
     in_channels: 3
     num_joints: 25
     num_persons: 2
+    graph_args:
+      labeling_mode: spatial
     hidden_dim: 256
-    out_dim: 512
+    out_dim: 256
     dropout: 0.1
     pretrained_path: null
     freeze: false
   projector:
     type: part_aware_qformer
-    in_dim: 512
+    in_dim: 256
     llm_dim: 4096
     target_temporal_bins: 4
     num_query_tokens: 7
@@ -158,6 +161,9 @@ train:
   num_workers: 4
   lr_projector: 0.0001
   lr_shift_gcn: 0.00001
+  freeze_shift_gcn: true
+  freeze_llm: true
+  freeze_lm_head: true
   weight_decay: 0.01
   grad_clip_norm: 1.0
   mixed_precision: fp16
