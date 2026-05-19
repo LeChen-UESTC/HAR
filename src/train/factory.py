@@ -6,6 +6,7 @@ import torch
 from torch import nn
 
 from src.models.encoder import build_shift_gcn_from_config
+from src.models.gircse_loader import load_gircse_model_and_tokenizer
 from src.models.projection import TokenProjector
 from src.models.qformer_projector import SkeletonQFormerProjector, qformer_config_from_dict
 from src.models.skeleton_gircse import SkeletonGIRCSE
@@ -57,17 +58,13 @@ def build_warmup_model(config: dict[str, Any]) -> WarmupSkeletonTextModel:
 
 
 def build_skeleton_gircse_model(config: dict[str, Any]) -> SkeletonGIRCSE:
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-
     shift_gcn = build_shift_gcn_from_config(config)
     projector = build_projector(config)
-    model_path = config["paths"]["gircse_model"]
-    llm = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        **hf_model_kwargs(config, for_text=False),
-    )
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_path,
+    paths = config["paths"]
+    llm, tokenizer = load_gircse_model_and_tokenizer(
+        base_model_path=paths.get("gircse_base_model", paths["qwen_instruct_model"]),
+        adapter_path=paths.get("gircse_adapter", paths.get("gircse_model")),
+        model_kwargs=hf_model_kwargs(config, for_text=False),
         trust_remote_code=bool(config.get("runtime", {}).get("trust_remote_code", True)),
     )
 

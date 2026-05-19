@@ -23,7 +23,8 @@ def cache_text_bank_from_config(config: dict[str, Any]) -> dict[str, Any]:
     return encode_text_bank(
         class_names=class_names,
         descriptions=descriptions,
-        model_path=paths["gircse_model"],
+        base_model_path=paths.get("gircse_base_model", paths["qwen_instruct_model"]),
+        adapter_path=paths.get("gircse_adapter", paths.get("gircse_model")),
         prompt_template=embedding_cfg["prompt"],
         output_path=paths["text_bank"],
         variant=text_cfg.get("description_variant", "full"),

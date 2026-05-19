@@ -4,13 +4,15 @@ from pathlib import Path
 from typing import Any
 
 from src.models.gircse_adapter import gircse_iterative_soft_generation
+from src.models.gircse_loader import load_gircse_model_and_tokenizer
 from src.utils.torch_utils import resolve_torch_dtype
 
 
 class TextGIRCSEEncoder:
     def __init__(
         self,
-        model_path: str,
+        base_model_path: str,
+        adapter_path: str | None = None,
         k_text: int = 20,
         normalize: bool = True,
         device_map: str | dict[str, Any] | None = "auto",
@@ -22,18 +24,8 @@ class TextGIRCSEEncoder:
         trust_remote_code: bool = True,
     ) -> None:
         import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer
 
         self.torch = torch
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            model_path,
-            add_eos_token=True,
-            padding_side="left",
-            trust_remote_code=trust_remote_code,
-        )
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-        self.tokenizer.padding_side = "left"
         model_kwargs = {
             "torch_dtype": resolve_torch_dtype(torch_dtype, fallback_to_float32_on_cpu),
             "device_map": device_map,
@@ -41,7 +33,12 @@ class TextGIRCSEEncoder:
         }
         if attn_implementation:
             model_kwargs["attn_implementation"] = attn_implementation
-        self.model = AutoModelForCausalLM.from_pretrained(model_path, **model_kwargs)
+        self.model, self.tokenizer = load_gircse_model_and_tokenizer(
+            base_model_path=base_model_path,
+            adapter_path=adapter_path,
+            model_kwargs=model_kwargs,
+            trust_remote_code=trust_remote_code,
+        )
         self.model.eval()
         self.k_text = k_text
         self.normalize = normalize
@@ -89,7 +86,8 @@ class TextGIRCSEEncoder:
 def encode_text_bank(
     class_names: list[str],
     descriptions: dict[str, dict[str, str]],
-    model_path: str,
+    base_model_path: str,
+    adapter_path: str | None,
     prompt_template: str,
     output_path: str | Path,
     variant: str,
@@ -109,7 +107,8 @@ def encode_text_bank(
     }
     prompts = [prompt_template.format(rich_description=rich[label]) for label in class_names]
     encoder = TextGIRCSEEncoder(
-        model_path=model_path,
+        base_model_path=base_model_path,
+        adapter_path=adapter_path,
         k_text=k_text,
         normalize=normalize,
         logit_temperature=logit_temperature,
@@ -127,7 +126,8 @@ def encode_text_bank(
         "rich_descriptions": rich,
         "z_text": z_text,
         "metadata": {
-            "model_path": model_path,
+            "base_model_path": base_model_path,
+            "adapter_path": adapter_path,
             "prompt_template": prompt_template,
             "description_variant": variant,
             "k_text": k_text,

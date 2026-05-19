@@ -37,6 +37,10 @@ Q-Former projector 使用 Salesforce LAVIS 的 BLIP-2 Q-Former 实现：
 - GIRCSE-Qwen7B: `/data/chenle/GIRCSE/GIRCSE-QWEN7B`
 - Qwen2.5-7B-Instruct: `/data/chenle/GIRCSE/Qwen2.5-7B`
 
+`GIRCSE-Qwen7B` 是 LoRA adapter 目录，不是完整基座模型。代码会显式加载
+`/data/chenle/GIRCSE/Qwen2.5-7B` 作为本地 base model，再挂载
+`/data/chenle/GIRCSE/GIRCSE-QWEN7B` adapter，避免服务器无外网时误连 Hugging Face Hub。
+
 本地不要求存在这些模型目录；部署到服务器后按配置运行即可。
 
 默认数据配置使用已经预处理好的 NTU `.npz` 文件：
