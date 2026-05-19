@@ -23,6 +23,10 @@ def classwise_infonce(
     class_ids: torch.Tensor | None = None,
     return_per_sample: bool = False,
 ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+    if z.shape[-1] != z_text.shape[-1]:
+        raise ValueError(
+            f"Embedding dim mismatch: z dim={z.shape[-1]} but z_text dim={z_text.shape[-1]}"
+        )
     z = F.normalize(z.float(), dim=-1)
     z_text = F.normalize(z_text.float(), dim=-1).to(z.device)
     target = label_to_text_indices(labels.to(z.device), class_ids=class_ids)

@@ -58,6 +58,8 @@ PyTorch 0.4/CUDA 9 时代的插件。
 `GIRCSE-Qwen7B` 是 LoRA adapter 目录，不是完整基座模型。代码会显式加载
 `/data/chenle/GIRCSE/Qwen2.5-7B` 作为本地 base model，再挂载
 `/data/chenle/GIRCSE/GIRCSE-QWEN7B` adapter，避免服务器无外网时误连 Hugging Face Hub。
+Qwen2.5-7B 的 hidden size 是 3584，因此 projector `llm_dim` 和 text bank embedding
+维度都配置为 3584。
 
 本地不要求存在这些模型目录；部署到服务器后按配置运行即可。
 

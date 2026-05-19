@@ -7,5 +7,5 @@ model:
   projector:
     type: linear
     in_dim: 256
-    llm_dim: 4096
+    llm_dim: 3584
     target_temporal_bins: 4

@@ -44,6 +44,13 @@ def main() -> None:
         class_ids,
         config.get("dataset", {}).get("seen_classes") or None,
     )
+    projector_dim = int(config["model"]["projector"]["llm_dim"])
+    text_dim = int(z_text.shape[-1])
+    if projector_dim != text_dim:
+        raise ValueError(
+            f"Projector llm_dim={projector_dim} does not match text bank dim={text_dim}. "
+            "Regenerate the text bank with the configured GIRCSE model or fix model.projector.llm_dim."
+        )
     temperature = float(config["loss"].get("temperature", 0.05))
     use_amp = config["train"].get("mixed_precision", "none") in {"fp16", "bf16"}
     scaler = torch.cuda.amp.GradScaler(enabled=use_amp and torch.cuda.is_available())

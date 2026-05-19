@@ -90,7 +90,7 @@ model:
   projector:
     type: part_aware_qformer
     in_dim: 256
-    llm_dim: 4096
+    llm_dim: 3584
     target_temporal_bins: 4
     num_query_tokens: 7
     query_roles:

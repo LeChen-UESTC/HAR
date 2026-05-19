@@ -7,7 +7,7 @@ model:
   projector:
     type: qformer
     in_dim: 256
-    llm_dim: 4096
+    llm_dim: 3584
     num_query_tokens: 7
     query_roles:
       - query_0
