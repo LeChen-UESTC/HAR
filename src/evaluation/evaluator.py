@@ -6,7 +6,7 @@ from typing import Any
 import torch
 import torch.nn.functional as F
 
-from src.train.common import move_batch_to_device
+from src.train.common import move_batch_to_device, resolve_class_scope
 
 
 def compute_logits(
@@ -61,7 +61,14 @@ def evaluate_embedding_model(
     model.eval()
     total = 0
     correct = 0
+    seen_total = 0
+    seen_correct = 0
+    unseen_total = 0
+    unseen_correct = 0
     predictions = []
+    seen_tensor = None
+    if seen_classes:
+        seen_tensor = torch.tensor(seen_classes, dtype=torch.long, device=device)
 
     for batch in dataloader:
         batch = move_batch_to_device(batch, device)
@@ -82,7 +89,15 @@ def evaluate_embedding_model(
         pred_labels = pred_indices if class_ids is None else class_ids.to(device)[pred_indices]
         labels = batch["label"]
         total += labels.numel()
-        correct += (pred_labels.long() == labels.long()).sum().item()
+        matches = pred_labels.long() == labels.long()
+        correct += matches.sum().item()
+        if seen_tensor is not None:
+            seen_mask = (labels.long().view(-1, 1) == seen_tensor.view(1, -1)).any(dim=1)
+            unseen_mask = ~seen_mask
+            seen_total += seen_mask.sum().item()
+            seen_correct += (matches & seen_mask).sum().item()
+            unseen_total += unseen_mask.sum().item()
+            unseen_correct += (matches & unseen_mask).sum().item()
         predictions.extend(
             {
                 "sample_id": sample_id,
@@ -92,11 +107,29 @@ def evaluate_embedding_model(
             for sample_id, label, pred in zip(batch["sample_id"], labels.detach().cpu(), pred_labels.detach().cpu())
         )
 
-    return {
+    metrics = {
         "top1": correct / max(total, 1),
         "num_samples": total,
         "predictions": predictions,
     }
+    if seen_tensor is not None:
+        seen_top1 = seen_correct / seen_total if seen_total else 0.0
+        unseen_top1 = unseen_correct / unseen_total if unseen_total else 0.0
+        h_mean = (
+            2.0 * seen_top1 * unseen_top1 / (seen_top1 + unseen_top1)
+            if seen_top1 + unseen_top1 > 0
+            else 0.0
+        )
+        metrics.update(
+            {
+                "seen_top1": seen_top1,
+                "unseen_top1": unseen_top1,
+                "h_mean": h_mean,
+                "seen_samples": seen_total,
+                "unseen_samples": unseen_total,
+            }
+        )
+    return metrics
 
 
 def save_eval_outputs(metrics: dict[str, Any], output_dir: str | Path) -> None:

@@ -23,6 +23,28 @@ from src.utils.seed import seed_everything
 from src.utils.wandb_utils import init_wandb
 
 
+def resolve_class_scope(config: dict[str, Any], scope: str | list[int] | None) -> list[int] | None:
+    if scope is None:
+        return None
+    if isinstance(scope, list):
+        return [int(item) for item in scope]
+
+    dataset_cfg = config.get("dataset", {})
+    normalized = str(scope).lower()
+    seen = [int(item) for item in dataset_cfg.get("seen_classes", [])]
+    unseen = [int(item) for item in dataset_cfg.get("unseen_classes", [])]
+
+    if normalized == "seen":
+        return seen
+    if normalized == "unseen":
+        return unseen
+    if normalized in {"all", "seen+unseen", "gzsl"}:
+        return seen + unseen
+    if normalized in {"none", "null"}:
+        return None
+    raise ValueError(f"Unsupported class scope: {scope}")
+
+
 def parse_common_args(description: str) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument("--config", required=True, help="Path to YAML/JSON config.")
@@ -117,7 +139,12 @@ def build_dataloader(
             )
         selected_classes = None
         if str(dataset_cfg.get("split", "")).lower() == "zsl":
-            if split_name in {"train", "val"}:
+            eval_scope = None
+            if not train:
+                eval_scope = config.get("eval", {}).get("sample_scope")
+            if eval_scope is not None:
+                selected_classes = resolve_class_scope(config, eval_scope)
+            elif split_name in {"train", "val"}:
                 selected_classes = dataset_cfg.get("seen_classes") or None
             elif split_name == "test":
                 selected_classes = dataset_cfg.get("unseen_classes") or None

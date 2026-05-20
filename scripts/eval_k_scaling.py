@@ -6,7 +6,7 @@ import _bootstrap  # noqa: F401
 import json
 from pathlib import Path
 
-from src.evaluation.evaluator import evaluate_embedding_model, select_text_classes
+from src.evaluation.evaluator import evaluate_embedding_model, resolve_class_scope, select_text_classes
 from src.train.common import (
     build_cache_manager,
     build_dataloader,
@@ -28,7 +28,9 @@ def main() -> None:
     device = select_device()
 
     cache_manager = build_cache_manager(config, logger)
-    test_loader = build_dataloader(config, "manifest_test", cache_manager, logger, train=False)
+    eval_cfg = config.get("eval", {})
+    split_key = str(eval_cfg.get("split_key", "manifest_test"))
+    test_loader = build_dataloader(config, split_key, cache_manager, logger, train=False)
     model = place_skeleton_gircse_model(build_skeleton_gircse_model(config), config, device)
     checkpoint = args.checkpoint or config.get("paths", {}).get("checkpoint")
     if checkpoint:
@@ -37,15 +39,17 @@ def main() -> None:
         logger.warning("No checkpoint provided; evaluating randomly initialized trainable modules.")
 
     z_text, class_ids = load_text_bank(config["paths"]["text_bank"], device)
+    candidate_classes = resolve_class_scope(config, eval_cfg.get("candidate_scope", "unseen"))
     z_text, class_ids = select_text_classes(
         z_text,
         class_ids,
-        config.get("dataset", {}).get("unseen_classes") or None,
+        candidate_classes,
     )
 
     results = []
     original_k = model.soft_token_generator.K
-    for k in config["model"]["soft_tokens"].get("k_test", [1, 3, 5, 10, 20]):
+    k_values = eval_cfg.get("k_values", config["model"]["soft_tokens"].get("k_test", [1, 3, 5, 10, 20]))
+    for k in k_values:
         model.soft_token_generator.K = int(k)
         metrics = evaluate_embedding_model(
             model=model,

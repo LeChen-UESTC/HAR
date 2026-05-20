@@ -142,7 +142,7 @@ def build_experiment_name(config: Mapping[str, Any]) -> str:
     proj_type = get_nested(config, ["model", "projector", "type"], "proj")
     proj_dim = get_nested(config, ["model", "projector", "llm_dim"], "d")
     k_train = get_nested(config, ["model", "soft_tokens", "k_train"], "k")
-    stage = get_nested(config, ["train", "stage"], "run")
+    stage = get_nested(config, ["eval", "stage"], get_nested(config, ["train", "stage"], "run"))
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     fp = config_fingerprint(
         {

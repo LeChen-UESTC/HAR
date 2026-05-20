@@ -122,6 +122,14 @@ configs/train_warmup_ntu60_48_12.yaml
 configs/train_gircse_ntu60_48_12.yaml
 ```
 
+NTU60 55/5 评估使用单独配置，避免把训练配置直接当测试配置：
+
+```text
+configs/eval_zsl_ntu60_55_5.yaml
+configs/eval_gzsl_ntu60_55_5.yaml
+configs/eval_k_scaling_ntu60_55_5.yaml
+```
+
 生成全集富文本描述。该步骤只依赖 `index_action_map.json` 的 120 个动作标签，
 不依赖具体 ZSL split；生成结果供 NTU60/NTU120 及所有 split 共享。
 
@@ -177,27 +185,26 @@ python scripts/train_skeleton_gircse.py --config configs/projector_part_aware_qf
 
 ZSL/GZSL 评估：
 
-`eval_zsl.py` 和 `eval_gzsl.py` 使用当前模型配置中的单个 `K` 评估；如果要测试
-`K=1,3,5`，使用 `eval_k_scaling.py`。
+`eval_zsl.py` 和 `eval_gzsl.py` 使用独立 eval config 中的单个 `eval.k` 评估；
+如果要测试多个 `K`，使用 `eval_k_scaling.py` 和 `eval.k_values`。
 
 ```bash
 CUDA_VISIBLE_DEVICES=1,2 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 python scripts/eval_zsl.py \
-  --config configs/train_gircse_ntu60_55_5.yaml \
+  --config configs/eval_zsl_ntu60_55_5.yaml \
   --checkpoint /data/chenle/GIRCSE/HAR/outputs/models/skeleton_gircse-ntu60-split_55_5-modality_skeleton-loss_stepwise_infonce_irr-proj_part_aware_qformer-dim_3584-K_5-eade367866-20260519_141225/last.ckpt \
   --wandb_mode offline
 
 CUDA_VISIBLE_DEVICES=1,2 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 python scripts/eval_gzsl.py \
-  --config configs/train_gircse_ntu60_55_5.yaml \
+  --config configs/eval_gzsl_ntu60_55_5.yaml \
   --checkpoint /data/chenle/GIRCSE/HAR/outputs/models/skeleton_gircse-ntu60-split_55_5-modality_skeleton-loss_stepwise_infonce_irr-proj_part_aware_qformer-dim_3584-K_5-eade367866-20260519_141225/last.ckpt \
   --wandb_mode offline
 
 CUDA_VISIBLE_DEVICES=1,2 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 python scripts/eval_k_scaling.py \
-  --config configs/train_gircse_ntu60_55_5.yaml \
+  --config configs/eval_k_scaling_ntu60_55_5.yaml \
   --checkpoint /data/chenle/GIRCSE/HAR/outputs/models/skeleton_gircse-ntu60-split_55_5-modality_skeleton-loss_stepwise_infonce_irr-proj_part_aware_qformer-dim_3584-K_5-eade367866-20260519_141225/last.ckpt \
-  --override model.soft_tokens.k_test=1,3,5 \
   --wandb_mode offline
 ```
 

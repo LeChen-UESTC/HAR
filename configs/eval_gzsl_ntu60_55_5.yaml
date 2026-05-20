@@ -1,0 +1,15 @@
+base_config: /data/chenle/GIRCSE/HAR/configs/train_gircse_ntu60_55_5.yaml
+
+experiment:
+  tags: ["ntu60", "55-5", "eval", "gzsl"]
+
+eval:
+  stage: eval_gzsl
+  split_key: manifest_test
+  sample_scope: all
+  candidate_scope: all
+  k: 5
+  batch_size: 8
+  num_workers: 4
+  calibrated_stacking_gamma: 0.0
+  metrics: ["top1", "seen_top1", "unseen_top1", "h_mean"]
