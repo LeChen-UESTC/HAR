@@ -22,6 +22,10 @@ train:
   eval_freq: 1
   save_freq: 1
 
+model:
+  soft_tokens:
+    k_train: 5
+
 loss:
   type: stepwise_infonce_irr
   temperature: 0.05
