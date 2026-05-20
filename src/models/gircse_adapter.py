@@ -62,7 +62,7 @@ def gircse_iterative_soft_generation(
     if use_cache is None:
         use_cache = not llm.training
 
-    current_embeds = input_embeds
+    current_embeds = input_embeds.to(device=embedding_weight.device, dtype=embedding_weight.dtype)
     current_mask = attention_mask
     past_key_values = None
     collected_hidden = []

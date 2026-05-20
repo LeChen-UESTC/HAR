@@ -63,3 +63,7 @@ class SoftTokenGenerator(nn.Module):
     @property
     def input_device(self) -> torch.device:
         return self._embedding_weight().device
+
+    @property
+    def input_dtype(self) -> torch.dtype:
+        return self._embedding_weight().dtype

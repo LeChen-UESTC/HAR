@@ -24,7 +24,8 @@ class SkeletonGIRCSE(nn.Module):
         feat = self.shift_gcn.forward_features(skeleton)
         skeleton_tokens = self.token_projector(feat)
         llm_input_device = getattr(self.soft_token_generator, "input_device", skeleton_tokens.device)
-        skeleton_tokens = skeleton_tokens.to(llm_input_device)
+        llm_input_dtype = getattr(self.soft_token_generator, "input_dtype", skeleton_tokens.dtype)
+        skeleton_tokens = skeleton_tokens.to(device=llm_input_device, dtype=llm_input_dtype)
         prompt_tokens = self.prompt_builder.build(
             batch_size=skeleton_tokens.shape[0],
             device=llm_input_device,
