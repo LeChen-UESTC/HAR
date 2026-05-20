@@ -149,7 +149,7 @@ python scripts/train_prealign.py --config configs/train_warmup_ntu120_110_10.yam
 Stage 2 Skeleton-GIRCSE 训练：
 
 ```bash
-CUDA_VISIBLE_DEVICES=1 python scripts/train_skeleton_gircse.py \
+CUDA_VISIBLE_DEVICES=1,2 python scripts/train_skeleton_gircse.py \
   --config configs/train_gircse_ntu60_55_5.yaml \
   --checkpoint /data/chenle/GIRCSE/HAR/outputs/models/prealign-ntu60-split_55_5-modality_skeleton-loss_classwise_infonce-proj_part_aware_qformer-dim_3584-K_5-6e50a0d2fe-20260519_083938/last.ckpt \
   --wandb_mode offline
@@ -163,7 +163,7 @@ gradient checkpointing 来控制显存；等效 batch size 仍是 8。建议至�
 CUDA_VISIBLE_DEVICES=1,2 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 python scripts/train_skeleton_gircse.py \
   --config configs/train_gircse_ntu60_55_5.yaml \
-  --checkpoint /data/chenle/GIRCSE/HAR/outputs/models/<stage1_exp_name>/last.ckpt \
+  --checkpoint /data/chenle/GIRCSE/HAR/outputs/models/prealign-ntu60-split_55_5-modality_skeleton-loss_classwise_infonce-proj_part_aware_qformer-dim_3584-K_5-6e50a0d2fe-20260519_083938/last.ckpt \
   --wandb_mode offline
 ```
 
@@ -177,10 +177,28 @@ python scripts/train_skeleton_gircse.py --config configs/projector_part_aware_qf
 
 ZSL/GZSL 评估：
 
+`eval_zsl.py` 和 `eval_gzsl.py` 使用当前模型配置中的单个 `K` 评估；如果要测试
+`K=1,3,5`，使用 `eval_k_scaling.py`。
+
 ```bash
-python scripts/eval_zsl.py --config configs/ntu120_zsl_110_10.yaml
-python scripts/eval_gzsl.py --config configs/ntu120_zsl_110_10.yaml
-python scripts/eval_k_scaling.py --config configs/ntu120_zsl_110_10.yaml
+CUDA_VISIBLE_DEVICES=1,2 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+python scripts/eval_zsl.py \
+  --config configs/train_gircse_ntu60_55_5.yaml \
+  --checkpoint /data/chenle/GIRCSE/HAR/outputs/models/skeleton_gircse-ntu60-split_55_5-modality_skeleton-loss_stepwise_infonce_irr-proj_part_aware_qformer-dim_3584-K_5-eade367866-20260519_141225/last.ckpt \
+  --wandb_mode offline
+
+CUDA_VISIBLE_DEVICES=1,2 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+python scripts/eval_gzsl.py \
+  --config configs/train_gircse_ntu60_55_5.yaml \
+  --checkpoint /data/chenle/GIRCSE/HAR/outputs/models/skeleton_gircse-ntu60-split_55_5-modality_skeleton-loss_stepwise_infonce_irr-proj_part_aware_qformer-dim_3584-K_5-eade367866-20260519_141225/last.ckpt \
+  --wandb_mode offline
+
+CUDA_VISIBLE_DEVICES=1,2 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+python scripts/eval_k_scaling.py \
+  --config configs/train_gircse_ntu60_55_5.yaml \
+  --checkpoint /data/chenle/GIRCSE/HAR/outputs/models/skeleton_gircse-ntu60-split_55_5-modality_skeleton-loss_stepwise_infonce_irr-proj_part_aware_qformer-dim_3584-K_5-eade367866-20260519_141225/last.ckpt \
+  --override model.soft_tokens.k_test=1,3,5 \
+  --wandb_mode offline
 ```
 
 绘制本地曲线：
