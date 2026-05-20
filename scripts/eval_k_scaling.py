@@ -15,7 +15,7 @@ from src.train.common import (
     parse_common_args,
     select_device,
 )
-from src.train.factory import build_skeleton_gircse_model
+from src.train.factory import build_skeleton_gircse_model, place_skeleton_gircse_model
 from src.utils.checkpoint import load_checkpoint
 
 
@@ -29,7 +29,7 @@ def main() -> None:
 
     cache_manager = build_cache_manager(config, logger)
     test_loader = build_dataloader(config, "manifest_test", cache_manager, logger, train=False)
-    model = build_skeleton_gircse_model(config).to(device)
+    model = place_skeleton_gircse_model(build_skeleton_gircse_model(config), config, device)
     checkpoint = args.checkpoint or config.get("paths", {}).get("checkpoint")
     if checkpoint:
         load_checkpoint(checkpoint, model, map_location=str(device), strict=False)

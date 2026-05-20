@@ -19,7 +19,7 @@ from src.train.common import (
     parse_common_args,
     select_device,
 )
-from src.train.factory import build_optimizer, build_skeleton_gircse_model
+from src.train.factory import build_optimizer, build_skeleton_gircse_model, place_skeleton_gircse_model
 from src.utils.checkpoint import load_checkpoint, save_checkpoint
 from src.utils.distributed import is_main_process
 from src.utils.metrics import append_jsonl
@@ -47,10 +47,8 @@ def main() -> None:
             "Point pretrained_path to the official Shift-GCN checkpoint used as the skeleton encoder."
         )
 
-    model = build_skeleton_gircse_model(config)
+    model = place_skeleton_gircse_model(build_skeleton_gircse_model(config), config, device)
     if config.get("runtime", {}).get("device_map_train") is not None:
-        model.shift_gcn.to(device)
-        model.token_projector.to(device)
         logger.info(
             "Using device_map_train=%s for GIRCSE LLM; trainable skeleton modules are on %s",
             config.get("runtime", {}).get("device_map_train"),

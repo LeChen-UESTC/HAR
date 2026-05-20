@@ -112,6 +112,18 @@ def build_skeleton_gircse_model(config: dict[str, Any]) -> SkeletonGIRCSE:
     )
 
 
+def place_skeleton_gircse_model(
+    model: SkeletonGIRCSE,
+    config: dict[str, Any],
+    device: torch.device,
+) -> SkeletonGIRCSE:
+    if config.get("runtime", {}).get("device_map_train") is not None:
+        model.shift_gcn.to(device)
+        model.token_projector.to(device)
+        return model
+    return model.to(device)
+
+
 def _validate_frozen_shift_gcn_checkpoint(config: dict[str, Any]) -> None:
     train_cfg = config.get("train", {})
     shift_cfg = config.get("model", {}).get("shift_gcn", {})
