@@ -131,6 +131,9 @@ def config_fingerprint(config: Mapping[str, Any], length: int = 10) -> str:
 
 
 def build_experiment_name(config: Mapping[str, Any]) -> str:
+    if str(get_nested(config, ["experiment", "name_style"], "")).lower() == "compact":
+        return build_compact_experiment_name(config)
+
     dataset = get_nested(config, ["dataset", "name"], "dataset")
     split_name = get_nested(
         config,
@@ -163,6 +166,18 @@ def build_experiment_name(config: Mapping[str, Any]) -> str:
         f"proj_{proj_type}-dim_{proj_dim}-K_{k_train}-{fp}-{stamp}"
     )
     return sanitize_name(raw)
+
+
+def build_compact_experiment_name(config: Mapping[str, Any]) -> str:
+    dataset = get_nested(config, ["dataset", "name"], "dataset")
+    split_name = get_nested(
+        config,
+        ["dataset", "split_name"],
+        get_nested(config, ["dataset", "split"], "split"),
+    )
+    k_train = get_nested(config, ["model", "soft_tokens", "k_train"], "k")
+    epochs = get_nested(config, ["train", "epochs"], get_nested(config, ["eval", "epochs"], "epoch"))
+    return sanitize_name(f"{dataset}_{split_name}_K{k_train}_Epoch{epochs}")
 
 
 def get_nested(config: Mapping[str, Any], keys: list[str], default: Any = None) -> Any:

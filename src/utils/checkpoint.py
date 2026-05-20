@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,32 @@ def save_checkpoint(
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(payload, path)
+
+
+def update_run_registry(
+    model_dir: str | Path,
+    exp_name: str | Path,
+    epoch: int,
+    metrics: dict[str, Any],
+) -> None:
+    if not is_main_process():
+        return
+
+    model_path = Path(model_dir)
+    registry_dir = model_path.parent / "all"
+    registry_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "exp_name": str(exp_name),
+        "model_dir": str(model_path),
+        "epoch": int(epoch),
+        "metrics": metrics,
+        "last_ckpt": str(model_path / "last.ckpt"),
+        "epoch_ckpt": str(model_path / f"epoch_{epoch}.ckpt"),
+    }
+    with (registry_dir / "latest_run.json").open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2, sort_keys=True)
+    with (registry_dir / "runs.jsonl").open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, sort_keys=True) + "\n")
 
 
 def load_checkpoint(

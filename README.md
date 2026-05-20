@@ -175,6 +175,30 @@ python scripts/train_skeleton_gircse.py \
   --wandb_mode offline
 ```
 
+Stage 2 的输出目录默认使用短命名：
+
+```text
+outputs/models/<dataset>_<split>_K<k_train>_Epoch<epochs>/
+```
+
+例如 `model.soft_tokens.k_train=10` 且 `train.epochs=10` 时，NTU60 55/5 会保存到：
+
+```text
+outputs/models/ntu60_55_5_K10_Epoch10/
+```
+
+每个 epoch 会保存一个 checkpoint：
+
+```text
+epoch_1.ckpt
+epoch_2.ckpt
+...
+last.ckpt
+```
+
+同时 `outputs/models/all/latest_run.json` 会记录最近一次 Stage 2 运行目录、最新
+epoch、loss 与 checkpoint 路径；`outputs/models/all/runs.jsonl` 会追加记录每个 epoch。
+
 Projector 消融配置：
 
 ```bash

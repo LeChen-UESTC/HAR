@@ -4,6 +4,7 @@ runtime:
   device_map_train: auto
 
 experiment:
+  name_style: compact
   tags: ["ntu120", "110-10", "generative", "stepwise", "irr"]
 
 train:
@@ -19,6 +20,7 @@ train:
   freeze_lm_head: true
   eval_during_train: false
   eval_freq: 1
+  save_freq: 1
 
 loss:
   type: stepwise_infonce_irr

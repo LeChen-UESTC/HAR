@@ -20,7 +20,7 @@ from src.train.common import (
     select_device,
 )
 from src.train.factory import build_optimizer, build_skeleton_gircse_model, place_skeleton_gircse_model
-from src.utils.checkpoint import load_checkpoint, save_checkpoint
+from src.utils.checkpoint import load_checkpoint, save_checkpoint, update_run_registry
 from src.utils.distributed import is_main_process
 from src.utils.metrics import append_jsonl
 from src.utils.wandb_utils import wandb_log
@@ -145,7 +145,12 @@ def main() -> None:
         logger.info("epoch=%s train_loss=%.6f", epoch, metrics["train_loss"])
         append_jsonl(metrics_path, metrics)
         wandb_log(ctx["wandb_run"], metrics, step=epoch)
-        save_checkpoint(Path(dirs["model_dir"]) / "last.ckpt", model, optimizer=optimizer, epoch=epoch, metrics=metrics)
+        model_dir = Path(dirs["model_dir"])
+        save_freq = int(config["train"].get("save_freq", 1))
+        if save_freq > 0 and epoch % save_freq == 0:
+            save_checkpoint(model_dir / f"epoch_{epoch}.ckpt", model, optimizer=optimizer, epoch=epoch, metrics=metrics)
+        save_checkpoint(model_dir / "last.ckpt", model, optimizer=optimizer, epoch=epoch, metrics=metrics)
+        update_run_registry(model_dir, dirs["exp_name"], epoch, metrics)
 
     ctx["wandb_run"].finish()
 
