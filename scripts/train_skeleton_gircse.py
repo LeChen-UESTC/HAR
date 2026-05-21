@@ -57,7 +57,13 @@ def main() -> None:
     else:
         model.to(device)
     if args.checkpoint:
-        load_checkpoint(args.checkpoint, model, map_location=str(device), strict=False)
+        load_checkpoint(
+            args.checkpoint,
+            model,
+            map_location="cpu",
+            strict=False,
+            include_prefixes=("shift_gcn.", "token_projector."),
+        )
         logger.info("Loaded warmup checkpoint: %s", args.checkpoint)
     optimizer = build_optimizer(config, model)
     z_text, class_ids = load_text_bank(config["paths"]["text_bank"], device)
@@ -148,8 +154,22 @@ def main() -> None:
         model_dir = Path(dirs["model_dir"])
         save_freq = int(config["train"].get("save_freq", 1))
         if save_freq > 0 and epoch % save_freq == 0:
-            save_checkpoint(model_dir / f"epoch_{epoch}.ckpt", model, optimizer=optimizer, epoch=epoch, metrics=metrics)
-        save_checkpoint(model_dir / "last.ckpt", model, optimizer=optimizer, epoch=epoch, metrics=metrics)
+            save_checkpoint(
+                model_dir / f"epoch_{epoch}.ckpt",
+                model,
+                optimizer=optimizer,
+                epoch=epoch,
+                metrics=metrics,
+                include_prefixes=("shift_gcn.", "token_projector."),
+            )
+        save_checkpoint(
+            model_dir / "last.ckpt",
+            model,
+            optimizer=optimizer,
+            epoch=epoch,
+            metrics=metrics,
+            include_prefixes=("shift_gcn.", "token_projector."),
+        )
         update_run_registry(model_dir, dirs["exp_name"], epoch, metrics)
 
     ctx["wandb_run"].finish()

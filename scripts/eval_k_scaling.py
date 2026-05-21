@@ -34,7 +34,13 @@ def main() -> None:
     model = place_skeleton_gircse_model(build_skeleton_gircse_model(config), config, device)
     checkpoint = args.checkpoint or config.get("paths", {}).get("checkpoint")
     if checkpoint:
-        load_checkpoint(checkpoint, model, map_location=str(device), strict=False)
+        load_checkpoint(
+            checkpoint,
+            model,
+            map_location="cpu",
+            strict=False,
+            include_prefixes=("shift_gcn.", "token_projector."),
+        )
     else:
         logger.warning("No checkpoint provided; evaluating randomly initialized trainable modules.")
 

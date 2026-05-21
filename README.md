@@ -196,6 +196,9 @@ epoch_2.ckpt
 last.ckpt
 ```
 
+Stage 2 checkpoint 只保存 skeleton 侧状态，即 `shift_gcn.*` 和 `token_projector.*`。
+冻结的 Qwen/GIRCSE 会在运行时从本地模型路径重新加载，不会重复写入每个 epoch checkpoint。
+
 同时 `outputs/models/all/latest_run.json` 会记录最近一次 Stage 2 运行目录、最新
 epoch、loss 与 checkpoint 路径；`outputs/models/all/runs.jsonl` 会追加记录每个 epoch。
 

@@ -15,13 +15,22 @@ def save_checkpoint(
     epoch: int | None = None,
     metrics: dict[str, float] | None = None,
     extra: dict[str, Any] | None = None,
+    include_prefixes: tuple[str, ...] | None = None,
 ) -> None:
     if not is_main_process():
         return
     import torch
 
+    state_dict = unwrap_model(model).state_dict()
+    if include_prefixes:
+        state_dict = {
+            key: value.detach().cpu()
+            for key, value in state_dict.items()
+            if key.startswith(include_prefixes)
+        }
+
     payload: dict[str, Any] = {
-        "model": unwrap_model(model).state_dict(),
+        "model": state_dict,
         "epoch": epoch,
         "metrics": metrics or {},
         "extra": extra or {},
@@ -69,11 +78,19 @@ def load_checkpoint(
     scheduler: Any | None = None,
     map_location: str = "cpu",
     strict: bool = True,
+    include_prefixes: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     import torch
 
     payload = torch.load(path, map_location=map_location)
-    unwrap_model(model).load_state_dict(payload["model"], strict=strict)
+    state_dict = payload["model"]
+    if include_prefixes:
+        state_dict = {
+            key: value
+            for key, value in state_dict.items()
+            if key.startswith(include_prefixes)
+        }
+    unwrap_model(model).load_state_dict(state_dict, strict=strict)
     if optimizer is not None and "optimizer" in payload:
         optimizer.load_state_dict(payload["optimizer"])
     if scheduler is not None and "scheduler" in payload:
