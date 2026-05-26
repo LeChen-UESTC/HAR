@@ -16,17 +16,36 @@ def save_checkpoint(
     metrics: dict[str, float] | None = None,
     extra: dict[str, Any] | None = None,
     include_prefixes: tuple[str, ...] | None = None,
+    trainable_only: bool = False,
 ) -> None:
     if not is_main_process():
         return
     import torch
 
-    state_dict = unwrap_model(model).state_dict()
+    unwrapped = unwrap_model(model)
+    state_dict = unwrapped.state_dict()
     if include_prefixes:
         state_dict = {
             key: value.detach().cpu()
             for key, value in state_dict.items()
             if key.startswith(include_prefixes)
+        }
+    if trainable_only:
+        trainable_names = {
+            name
+            for name, param in unwrapped.named_parameters()
+            if param.requires_grad
+        }
+        trainable_module_prefixes = {
+            name.rsplit(".", 1)[0]
+            for name in trainable_names
+            if "." in name
+        }
+        state_dict = {
+            key: value.detach().cpu()
+            for key, value in state_dict.items()
+            if key in trainable_names
+            or any(key.startswith(f"{prefix}.") for prefix in trainable_module_prefixes)
         }
 
     payload: dict[str, Any] = {

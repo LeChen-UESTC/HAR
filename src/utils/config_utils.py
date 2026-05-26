@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -34,7 +35,7 @@ def deep_update(base: dict[str, Any], override: Mapping[str, Any]) -> dict[str, 
     return result
 
 
-def load_config(path: str | Path) -> dict[str, Any]:
+def load_config(path: str | Path, materialize: bool = True) -> dict[str, Any]:
     config_path = Path(path).expanduser().resolve()
     if not config_path.exists():
         raise FileNotFoundError(f"Config file not found: {config_path}")
@@ -58,12 +59,112 @@ def load_config(path: str | Path) -> dict[str, Any]:
             local_base_path = config_path.parent / base_path.name
             if local_base_path.exists():
                 base_path = local_base_path
-        base = load_config(base_path)
+        base = load_config(base_path, materialize=False)
         config = deep_update(base, config)
 
     config.setdefault("_meta", {})
     config["_meta"]["config_path"] = str(config_path)
+    if materialize:
+        return normalize_config(config, config_path)
     return config
+
+
+def normalize_config(config: dict[str, Any], config_path: Path) -> dict[str, Any]:
+    result = copy.deepcopy(config)
+    project_root = _project_root(result, config_path)
+    result = _apply_active_split(result)
+    result = _apply_named_preset(result, "train_presets", ["train", "stage"])
+    result = _apply_named_preset(result, "eval_presets", ["eval", "task"])
+    _normalize_aliases(result)
+    result = _expand_templates(result, {"project_root": str(project_root)})
+    result.setdefault("_meta", {})
+    result["_meta"]["project_root"] = str(project_root)
+    return result
+
+
+def _project_root(config: Mapping[str, Any], config_path: Path) -> Path:
+    configured = get_nested(config, ["project", "root"])
+    if configured:
+        expanded = str(configured).replace("{config_dir}", str(config_path.parent))
+        return Path(os.path.expanduser(os.path.expandvars(expanded)))
+    return config_path.parent.parent.resolve()
+
+
+def _apply_active_split(config: dict[str, Any]) -> dict[str, Any]:
+    splits = config.pop("dataset_splits", None)
+    if not splits:
+        return config
+
+    active_split = get_nested(
+        config,
+        ["experiment", "active_split"],
+        get_nested(config, ["dataset", "active_split"]),
+    )
+    if not active_split:
+        raise ValueError("dataset_splits is configured but experiment.active_split is missing.")
+    if active_split not in splits:
+        choices = ", ".join(sorted(str(key) for key in splits))
+        raise ValueError(f"Unknown active split {active_split!r}. Available splits: {choices}")
+
+    result = deep_update(config, splits[active_split])
+    result.setdefault("_meta", {})
+    result["_meta"]["active_split"] = str(active_split)
+    return result
+
+
+def _apply_named_preset(
+    config: dict[str, Any],
+    presets_key: str,
+    active_key_path: list[str],
+) -> dict[str, Any]:
+    presets = config.pop(presets_key, None)
+    if not presets:
+        return config
+
+    active_name = get_nested(config, active_key_path)
+    if not active_name:
+        joined = ".".join(active_key_path)
+        raise ValueError(f"{presets_key} is configured but {joined} is missing.")
+    if active_name not in presets:
+        choices = ", ".join(sorted(str(key) for key in presets))
+        raise ValueError(f"Unknown {presets_key} preset {active_name!r}. Available presets: {choices}")
+
+    result = deep_update(config, presets[active_name])
+    result.setdefault("_meta", {})
+    result["_meta"][presets_key.removesuffix("_presets")] = str(active_name)
+    return result
+
+
+def _normalize_aliases(config: dict[str, Any]) -> None:
+    train_cfg = config.setdefault("train", {})
+    eval_cfg = config.setdefault("eval", {})
+    _copy_alias(train_cfg, "eval_on_train", "eval_during_train")
+    _copy_alias(train_cfg, "eval_every_epochs", "eval_freq")
+    _copy_alias(eval_cfg, "eval_batch_size", "batch_size")
+
+
+def _copy_alias(config: dict[str, Any], alias: str, canonical: str) -> None:
+    if alias not in config:
+        return
+    if canonical in config and config[canonical] != config[alias]:
+        raise ValueError(
+            f"Conflicting config values for {alias!r} and {canonical!r}: "
+            f"{config[alias]!r} != {config[canonical]!r}"
+        )
+    config[canonical] = config[alias]
+
+
+def _expand_templates(value: Any, replacements: Mapping[str, str]) -> Any:
+    if isinstance(value, Mapping):
+        return {key: _expand_templates(item, replacements) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_expand_templates(item, replacements) for item in value]
+    if isinstance(value, str):
+        expanded = os.path.expandvars(os.path.expanduser(value))
+        for key, replacement in replacements.items():
+            expanded = expanded.replace("{" + key + "}", replacement)
+        return expanded
+    return value
 
 
 def save_config(config: Mapping[str, Any], path: str | Path) -> None:
@@ -175,9 +276,29 @@ def build_compact_experiment_name(config: Mapping[str, Any]) -> str:
         ["dataset", "split_name"],
         get_nested(config, ["dataset", "split"], "split"),
     )
+    run_kind = get_nested(config, ["_meta", "run_kind"], get_nested(config, ["run", "mode"], "train"))
+    dataset_label = _dataset_split_label(str(dataset), str(split_name))
+    if run_kind == "eval":
+        task = get_nested(config, ["eval", "task"], get_nested(config, ["eval", "stage"], "eval"))
+        batch_size = get_nested(
+            config,
+            ["eval", "eval_batch_size"],
+            get_nested(config, ["eval", "batch_size"], "bs"),
+        )
+        k_eval = get_nested(config, ["eval", "k"], get_nested(config, ["model", "soft_tokens", "k_train"], "k"))
+        return sanitize_name(f"eval_{task}_{dataset_label}_BS{batch_size}_K{k_eval}")
+
+    batch_size = get_nested(config, ["train", "batch_size"], "bs")
+    epochs = get_nested(config, ["train", "epochs"], "ep")
     k_train = get_nested(config, ["model", "soft_tokens", "k_train"], "k")
-    epochs = get_nested(config, ["train", "epochs"], get_nested(config, ["eval", "epochs"], "epoch"))
-    return sanitize_name(f"{dataset}_{split_name}_K{k_train}_Epoch{epochs}")
+    return sanitize_name(f"train_{dataset_label}_BS{batch_size}_EP{epochs}_K{k_train}")
+
+
+def _dataset_split_label(dataset: str, split_name: str) -> str:
+    normalized = dataset.lower()
+    if normalized in {"ntu60", "ntu120"}:
+        return f"NTU_{split_name}"
+    return f"{dataset}_{split_name}"
 
 
 def get_nested(config: Mapping[str, Any], keys: list[str], default: Any = None) -> Any:

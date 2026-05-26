@@ -14,7 +14,8 @@ from src.evaluation.evaluator import (
 from src.train.common import (
     build_cache_manager,
     build_dataloader,
-    initialize_run,
+    finalize_run,
+    initialize_run_for_kind,
     load_text_bank,
     parse_common_args,
     select_device,
@@ -23,13 +24,11 @@ from src.train.factory import build_skeleton_gircse_model, place_skeleton_gircse
 from src.utils.checkpoint import load_checkpoint
 
 
-def main() -> None:
-    args = parse_common_args("Evaluate Skeleton-GIRCSE under GZSL candidates.")
-    ctx = initialize_run(args)
+def run(ctx: dict, args) -> None:
     config = ctx["config"]
     logger = ctx["logger"]
     dirs = ctx["dirs"]
-    device = select_device()
+    device = select_device(config)
 
     cache_manager = build_cache_manager(config, logger)
     eval_cfg = config.get("eval", {})
@@ -75,7 +74,17 @@ def main() -> None:
         gamma,
     )
     save_eval_outputs(metrics, Path(dirs["eval_dir"]))
-    ctx["wandb_run"].finish()
+
+
+def main() -> None:
+    args = parse_common_args("Evaluate Skeleton-GIRCSE under GZSL candidates.")
+    ctx = initialize_run_for_kind(args, run_kind="eval")
+    try:
+        run(ctx, args)
+    except Exception as exc:
+        finalize_run(ctx, status="failed", extra={"error": repr(exc)})
+        raise
+    finalize_run(ctx)
 
 
 if __name__ == "__main__":

@@ -10,7 +10,8 @@ from src.evaluation.evaluator import evaluate_embedding_model, resolve_class_sco
 from src.train.common import (
     build_cache_manager,
     build_dataloader,
-    initialize_run,
+    finalize_run,
+    initialize_run_for_kind,
     load_text_bank,
     parse_common_args,
     select_device,
@@ -19,13 +20,11 @@ from src.train.factory import build_skeleton_gircse_model, place_skeleton_gircse
 from src.utils.checkpoint import load_checkpoint
 
 
-def main() -> None:
-    args = parse_common_args("Evaluate test-time soft-token K scaling.")
-    ctx = initialize_run(args)
+def run(ctx: dict, args) -> None:
     config = ctx["config"]
     logger = ctx["logger"]
     dirs = ctx["dirs"]
-    device = select_device()
+    device = select_device(config)
 
     cache_manager = build_cache_manager(config, logger)
     eval_cfg = config.get("eval", {})
@@ -73,7 +72,17 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     with (output_dir / "k_scaling_metrics.json").open("w", encoding="utf-8") as handle:
         json.dump(results, handle, indent=2, sort_keys=True)
-    ctx["wandb_run"].finish()
+
+
+def main() -> None:
+    args = parse_common_args("Evaluate test-time soft-token K scaling.")
+    ctx = initialize_run_for_kind(args, run_kind="eval")
+    try:
+        run(ctx, args)
+    except Exception as exc:
+        finalize_run(ctx, status="failed", extra={"error": repr(exc)})
+        raise
+    finalize_run(ctx)
 
 
 if __name__ == "__main__":

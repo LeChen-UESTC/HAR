@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import json
+import os
+import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +18,7 @@ from src.data.samplers import SamplingStrategy
 from src.utils.config_utils import (
     apply_overrides,
     load_config,
+    normalize_config,
     prepare_run_dirs,
     save_config,
 )
@@ -58,7 +63,25 @@ def parse_common_args(description: str) -> argparse.Namespace:
 
 
 def initialize_run(args: argparse.Namespace) -> dict[str, Any]:
-    config = apply_overrides(load_config(args.config), args.override)
+    return initialize_run_for_kind(args, run_kind=None)
+
+
+def initialize_run_for_kind(args: argparse.Namespace, run_kind: str | None) -> dict[str, Any]:
+    config_path = Path(args.config).expanduser().resolve()
+    materialization_overrides = [
+        item for item in args.override if is_materialization_override(item)
+    ]
+    config = normalize_config(
+        apply_overrides(load_config(config_path, materialize=False), materialization_overrides),
+        config_path,
+    )
+    runtime_overrides = [
+        item for item in args.override if not is_preset_definition_override(item)
+    ]
+    config = apply_overrides(config, runtime_overrides)
+    normalize_runtime_aliases(config)
+    if run_kind is not None:
+        config.setdefault("_meta", {})["run_kind"] = run_kind
     if args.wandb_mode is not None:
         config.setdefault("experiment", {})["wandb_mode"] = args.wandb_mode
     if args.eval_during_train:
@@ -66,6 +89,7 @@ def initialize_run(args: argparse.Namespace) -> dict[str, Any]:
     if args.eval_freq is not None:
         config.setdefault("train", {})["eval_freq"] = args.eval_freq
 
+    apply_runtime_environment(config)
     setup_distributed()
     seed_everything(int(config.get("experiment", {}).get("seed", 42)))
     dirs = prepare_run_dirs(config, exp_name=args.exp_name)
@@ -75,6 +99,9 @@ def initialize_run(args: argparse.Namespace) -> dict[str, Any]:
 
     if is_main_process():
         save_config(config, Path(dirs["model_dir"]) / "config.yaml")
+        meta_path = write_run_meta(config, dirs, status="running")
+    else:
+        meta_path = None
 
     wandb_run = init_wandb(
         config=config,
@@ -89,8 +116,116 @@ def initialize_run(args: argparse.Namespace) -> dict[str, Any]:
         "exp_name": exp_name,
         "logger": logger,
         "log_path": log_path,
+        "run_meta_path": meta_path,
         "wandb_run": wandb_run,
     }
+
+
+def is_materialization_override(item: str) -> bool:
+    key = item.split("=", 1)[0]
+    return (
+        key in {
+            "project.root",
+            "experiment.active_split",
+            "dataset.active_split",
+            "train.stage",
+            "eval.task",
+        }
+        or is_preset_definition_key(key)
+    )
+
+
+def is_preset_definition_override(item: str) -> bool:
+    return is_preset_definition_key(item.split("=", 1)[0])
+
+
+def is_preset_definition_key(key: str) -> bool:
+    return (
+        key.startswith("dataset_splits.")
+        or key.startswith("train_presets.")
+        or key.startswith("eval_presets.")
+    )
+
+
+def normalize_runtime_aliases(config: dict[str, Any]) -> None:
+    train_cfg = config.setdefault("train", {})
+    eval_cfg = config.setdefault("eval", {})
+    if "eval_on_train" in train_cfg:
+        train_cfg["eval_during_train"] = train_cfg["eval_on_train"]
+    if "eval_every_epochs" in train_cfg:
+        train_cfg["eval_freq"] = train_cfg["eval_every_epochs"]
+    if "eval_batch_size" in eval_cfg:
+        eval_cfg["batch_size"] = eval_cfg["eval_batch_size"]
+
+
+def apply_runtime_environment(config: dict[str, Any]) -> None:
+    cuda_visible_devices = config.get("runtime", {}).get("cuda_visible_devices")
+    if cuda_visible_devices in {None, "", "null"}:
+        return
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(cuda_visible_devices)
+
+
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def write_run_meta(
+    config: dict[str, Any],
+    dirs: dict[str, Any],
+    status: str,
+    extra: dict[str, Any] | None = None,
+) -> Path:
+    run_kind = str(config.get("_meta", {}).get("run_kind") or "run")
+    output_dir = Path(dirs["eval_dir"] if run_kind == "eval" else dirs["model_dir"])
+    output_dir.mkdir(parents=True, exist_ok=True)
+    meta_path = output_dir / "run_meta.json"
+    started_at = utc_now_iso()
+    payload = {
+        "status": status,
+        "started_at": started_at,
+        "ended_at": None,
+        "duration_seconds": None,
+        "exp_name": str(dirs["exp_name"]),
+        "run_kind": run_kind,
+        "active_split": config.get("_meta", {}).get("active_split"),
+        "train_stage": config.get("train", {}).get("stage"),
+        "eval_task": config.get("eval", {}).get("task"),
+        "config_path": config.get("_meta", {}).get("config_path"),
+        "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
+        "device": config.get("runtime", {}).get("device"),
+        "command": " ".join(sys.argv),
+    }
+    if extra:
+        payload.update(extra)
+    with meta_path.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2, sort_keys=True)
+    return meta_path
+
+
+def finalize_run(
+    ctx: dict[str, Any],
+    status: str = "completed",
+    extra: dict[str, Any] | None = None,
+) -> None:
+    if is_main_process() and ctx.get("run_meta_path"):
+        meta_path = Path(ctx["run_meta_path"])
+        payload: dict[str, Any] = {}
+        if meta_path.exists():
+            with meta_path.open("r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+        ended_at = utc_now_iso()
+        payload["status"] = status
+        payload["ended_at"] = ended_at
+        started_at = payload.get("started_at")
+        if started_at:
+            start = datetime.fromisoformat(started_at)
+            end = datetime.fromisoformat(ended_at)
+            payload["duration_seconds"] = (end - start).total_seconds()
+        if extra:
+            payload.update(extra)
+        with meta_path.open("w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, sort_keys=True)
+    ctx["wandb_run"].finish()
 
 
 def build_cache_manager(config: dict[str, Any], logger: Any) -> CacheManager | None:
@@ -179,9 +314,11 @@ def build_dataloader(
     sampler = None
     if get_world_size() > 1:
         sampler = DistributedSampler(dataset, shuffle=train)
+    batch_size_key = "batch_size" if train else "eval_batch_size"
+    batch_size = train_cfg.get(batch_size_key, train_cfg.get("batch_size", 8))
     return DataLoader(
         dataset,
-        batch_size=int(train_cfg.get("batch_size", 8)),
+        batch_size=int(batch_size),
         shuffle=train and sampler is None,
         sampler=sampler,
         num_workers=int(train_cfg.get("num_workers", 4)),
@@ -198,7 +335,14 @@ def load_text_bank(path: str | Path, device: torch.device) -> tuple[torch.Tensor
     return z_text, class_ids
 
 
-def select_device() -> torch.device:
+def select_device(config: dict[str, Any] | None = None) -> torch.device:
+    runtime = (config or {}).get("runtime", {})
+    requested = runtime.get("device")
+    if requested:
+        device = torch.device(str(requested))
+        if device.type == "cuda" and not torch.cuda.is_available():
+            raise RuntimeError(f"runtime.device={requested!r} requires CUDA, but CUDA is not available.")
+        return device
     return torch.device("cuda", torch.cuda.current_device()) if torch.cuda.is_available() else torch.device("cpu")
 
 
