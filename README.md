@@ -1,100 +1,217 @@
 # Skeleton-GIRCSE
+项目目录：/data/chenle/GIRCSE
+chenle@ubuntu:~/GIRCSE/HAR$ tree -I outputs
+.
+├── configs
+│   ├── eval_gzsl_ntu60_55_5.yaml
+│   ├── eval_k_scaling_ntu60_55_5.yaml
+│   ├── eval_zsl_ntu60_55_5.yaml
+│   ├── ntu120_zsl_110_10.yaml
+│   ├── ntu120_zsl_96_24.yaml
+│   ├── ntu120_zsl.yaml
+│   ├── ntu60_zsl_48_12.yaml
+│   ├── ntu60_zsl_55_5.yaml
+│   ├── ntu60_zsl.yaml
+│   ├── projector_general_qformer.yaml
+│   ├── projector_linear.yaml
+│   ├── projector_part_aware_qformer.yaml
+│   ├── train_gircse_ntu120_110_10.yaml
+│   ├── train_gircse_ntu120_96_24.yaml
+│   ├── train_gircse_ntu60_48_12.yaml
+│   ├── train_gircse_ntu60_55_5.yaml
+│   ├── train_gircse.yaml
+│   ├── train_warmup_ntu120_110_10.yaml
+│   ├── train_warmup_ntu120_96_24.yaml
+│   ├── train_warmup_ntu60_48_12.yaml
+│   ├── train_warmup_ntu60_55_5_general.yaml
+│   ├── train_warmup_ntu60_55_5.yaml
+│   └── train_warmup.yaml
+├── data
+│   ├── cache
+│   │   ├── rich_descriptions_ntu120.json
+│   │   └── text_embeddings_ntu120_zsl.pt
+│   ├── index_action_map.json
+│   ├── ntu_120
+│   │   └── NTU120.npz
+│   ├── ntu_60
+│   │   └── NTU_60.npz
+│   └── read_NTU60.py
+├── models
+│   ├── shift_gcn_ntu120_xsub.pt
+│   └── shift_gcn_ntu60_xsub.pt
+├── README.md
+├── scripts
+│   ├── _bootstrap.py
+│   ├── cache_text_bank.py
+│   ├── eval_gzsl.py
+│   ├── eval_k_scaling.py
+│   ├── eval_zsl.py
+│   ├── export_gircse_soft_tokens.py
+│   ├── generate_rich_description.py
+│   ├── __pycache__
+│   │   ├── _bootstrap.cpython-310.pyc
+│   │   └── _bootstrap.cpython-37.pyc
+│   ├── train_prealign.py
+│   └── train_skeleton_gircse.py
+└── src
+    ├── data
+    │   ├── cache_manager.py
+    │   ├── dataset.py
+    │   ├── __init__.py
+    │   ├── __pycache__
+    │   │   ├── cache_manager.cpython-310.pyc
+    │   │   ├── dataset.cpython-310.pyc
+    │   │   ├── __init__.cpython-310.pyc
+    │   │   └── samplers.cpython-310.pyc
+    │   └── samplers.py
+    ├── evaluation
+    │   ├── evaluator.py
+    │   ├── __init__.py
+    │   └── __pycache__
+    │       ├── evaluator.cpython-310.pyc
+    │       └── __init__.cpython-310.pyc
+    ├── __init__.py
+    ├── losses
+    │   ├── classwise_infonce.py
+    │   ├── __init__.py
+    │   ├── iterative_refinement_regularizer.py
+    │   ├── __pycache__
+    │   │   ├── classwise_infonce.cpython-310.pyc
+    │   │   ├── __init__.cpython-310.pyc
+    │   │   ├── iterative_refinement_regularizer.cpython-310.pyc
+    │   │   └── stepwise_infonce.cpython-310.pyc
+    │   └── stepwise_infonce.py
+    ├── models
+    │   ├── encoder.py
+    │   ├── generative_pooling.py
+    │   ├── gircse_adapter.py
+    │   ├── gircse_loader.py
+    │   ├── __init__.py
+    │   ├── projection.py
+    │   ├── __pycache__
+    │   │   ├── encoder.cpython-310.pyc
+    │   │   ├── generative_pooling.cpython-310.pyc
+    │   │   ├── gircse_adapter.cpython-310.pyc
+    │   │   ├── gircse_loader.cpython-310.pyc
+    │   │   ├── __init__.cpython-310.pyc
+    │   │   ├── projection.cpython-310.pyc
+    │   │   ├── qformer_projector.cpython-310.pyc
+    │   │   ├── skeleton_gircse.cpython-310.pyc
+    │   │   ├── skeleton_prompt_builder.cpython-310.pyc
+    │   │   └── soft_token_generator.cpython-310.pyc
+    │   ├── qformer_projector.py
+    │   ├── skeleton_gircse.py
+    │   ├── skeleton_prompt_builder.py
+    │   └── soft_token_generator.py
+    ├── __pycache__
+    │   ├── __init__.cpython-310.pyc
+    │   └── __init__.cpython-37.pyc
+    ├── text_branch
+    │   ├── cache_text_bank.py
+    │   ├── description_templates.py
+    │   ├── encode_text_gircse.py
+    │   ├── generate_rich_description.py
+    │   ├── __init__.py
+    │   └── __pycache__
+    │       ├── cache_text_bank.cpython-310.pyc
+    │       ├── description_templates.cpython-310.pyc
+    │       ├── description_templates.cpython-37.pyc
+    │       ├── encode_text_gircse.cpython-310.pyc
+    │       ├── generate_rich_description.cpython-310.pyc
+    │       ├── generate_rich_description.cpython-37.pyc
+    │       ├── __init__.cpython-310.pyc
+    │       └── __init__.cpython-37.pyc
+    ├── third_party
+    │   ├── gircse_embedding
+    │   │   ├── base.py
+    │   │   ├── __init__.py
+    │   │   ├── LICENSE
+    │   │   ├── model.py
+    │   │   ├── README.md
+    │   │   └── trainer.py
+    │   ├── __init__.py
+    │   ├── lavis_blip2_qformer
+    │   │   ├── __init__.py
+    │   │   ├── LICENSE.txt
+    │   │   ├── __pycache__
+    │   │   │   ├── __init__.cpython-310.pyc
+    │   │   │   └── Qformer.cpython-310.pyc
+    │   │   ├── Qformer.py
+    │   │   └── README.md
+    │   ├── __pycache__
+    │   │   └── __init__.cpython-310.pyc
+    │   └── shift_gcn
+    │       ├── graph.py
+    │       ├── __init__.py
+    │       ├── LICENSE.txt
+    │       ├── model.py
+    │       ├── __pycache__
+    │       │   ├── graph.cpython-310.pyc
+    │       │   ├── __init__.cpython-310.pyc
+    │       │   ├── model.cpython-310.pyc
+    │       │   └── shift.cpython-310.pyc
+    │       ├── README.md
+    │       └── shift.py
+    ├── train
+    │   ├── common.py
+    │   ├── factory.py
+    │   ├── __init__.py
+    │   └── __pycache__
+    │       ├── common.cpython-310.pyc
+    │       ├── common.cpython-37.pyc
+    │       ├── factory.cpython-310.pyc
+    │       ├── __init__.cpython-310.pyc
+    │       └── __init__.cpython-37.pyc
+    └── utils
+        ├── checkpoint.py
+        ├── config_utils.py
+        ├── distributed.py
+        ├── __init__.py
+        ├── logging_utils.py
+        ├── metrics.py
+        ├── __pycache__
+        │   ├── checkpoint.cpython-310.pyc
+        │   ├── config_utils.cpython-310.pyc
+        │   ├── distributed.cpython-310.pyc
+        │   ├── __init__.cpython-310.pyc
+        │   ├── logging_utils.cpython-310.pyc
+        │   ├── metrics.cpython-310.pyc
+        │   ├── seed.cpython-310.pyc
+        │   ├── torch_utils.cpython-310.pyc
+        │   └── wandb_utils.cpython-310.pyc
+        ├── seed.py
+        ├── torch_utils.py
+        └── wandb_utils.py
 
-本项目是 Skeleton-GIRCSE 的本地工程骨架，用于在服务器
-`/data/chenle/GIRCSE` 下复现实验。所有会影响结果的路径、模型选择、采样策略、
-loss、projection、训练阶段与评估开关都通过配置或命令行传入。
-
-## GIRCSE 官方代码来源
-
-GIRCSE 相关 soft-token 生成逻辑参考并 vendor 了官方实现：
-
-- Source: https://github.com/Roytsai27/GIRCSE/tree/main/embedding
-- Commit: `20676c15294e161bcfd5d5be97e75498e54fdb8f`
-- Vendored path: `src/third_party/gircse_embedding/`
-- License: MIT, copied in `src/third_party/gircse_embedding/LICENSE`
-
-项目实际调用的适配层是 `src/models/gircse_adapter.py`，它保留官方
-`BaseReasoningTrainer.encode()` / `_extend_sequence()` / `GIRCSETrainer.get_next_token_embedding()`
-的核心机制，同时支持 skeleton projected tokens 以 `inputs_embeds` 形式进入 LLM。
-
-## BLIP-2 Q-Former 来源
-
-Q-Former projector 使用 Salesforce LAVIS 的 BLIP-2 Q-Former 实现：
-
-- Source: https://github.com/salesforce/LAVIS/tree/main/lavis/models/blip2_models
-- Commit: `506965b9c4a18c1e565bd32acaccabe0198433f7`
-- Vendored path: `src/third_party/lavis_blip2_qformer/`
-- License: BSD-3-Clause, copied in `src/third_party/lavis_blip2_qformer/LICENSE.txt`
+31 directories, 149 files
 
 默认 projector 是 `part_aware_qformer`，使用 7 个 query：
 `head`、`left_arm`、`right_arm`、`torso`、`left_leg`、`right_leg`、`global`。
 本版本只做 Part-aware Query Initialization + Global Cross-Attention，不启用 `L_part` 弱监督。
-
-## Shift-GCN 官方代码来源
-
-骨架 encoder 默认使用官方 Shift-GCN 结构：
-
-- Source: https://github.com/kchengiva/Shift-GCN
-- Vendored path: `src/third_party/shift_gcn/`
-- License: Creative Commons Attribution-NonCommercial 4.0 International,
-  copied in `src/third_party/shift_gcn/LICENSE.txt`
-
-本仓库保留官方 `l1`-`l10`、Shift-GCN spatial shift、分类头命名，以兼容官方
-`.pt` 权重；同时新增 `forward_features()`，输出进入 Skeleton Q-Former 的特征图。
-官方仓库的旧 CUDA temporal shift 扩展被替换为纯 PyTorch fallback，避免服务器重新编译
-PyTorch 0.4/CUDA 9 时代的插件。
-
-## 服务器模型路径
-
 默认配置已写入服务器路径：
-
-- GIRCSE-Qwen7B: `/data/chenle/GIRCSE/GIRCSE-QWEN7B`
+- Shift-GCN: `/data/chenle/GIRCSE/HAR/models`
+- GIRCSE-Qwen7B: `/data/chenle/GIRCSE/GIRCSE-QWEN7B` 
 - Qwen2.5-7B-Instruct: `/data/chenle/GIRCSE/Qwen2.5-7B`
-- NTU120 official Shift-GCN xsub checkpoint:
-  `/data/chenle/GIRCSE/HAR/models/shift_gcn_ntu120_xsub.pt`
-- NTU60 official Shift-GCN xsub checkpoint:
-  `/data/chenle/GIRCSE/HAR/models/shift_gcn_ntu60_xsub.pt`
-
-`GIRCSE-Qwen7B` 是 LoRA adapter 目录，不是完整基座模型。代码会显式加载
+`GIRCSE-Qwen7B`是LoRA adapter目录，不是完整基座模型。
 `/data/chenle/GIRCSE/Qwen2.5-7B` 作为本地 base model，再挂载
 `/data/chenle/GIRCSE/GIRCSE-QWEN7B` adapter，避免服务器无外网时误连 Hugging Face Hub。
 Qwen2.5-7B 的 hidden size 是 3584，因此 projector `llm_dim` 和 text bank embedding
 维度都配置为 3584。
-
 本地不要求存在这些模型目录；部署到服务器后按配置运行即可。
 
-默认把官方 Shift-GCN 发布权重作为冻结 skeleton encoder 使用。权重文件不提交到 Git，
-服务器上需要先放到上述 `models/` 路径。如果从官方仓库下载，可按下面的命名拷贝：
-
-```bash
-mkdir -p /data/chenle/GIRCSE/HAR/models
-cp /path/to/Shift-GCN/save_models/ntu120_ShiftGCN_joint_xsub.pt \
-  /data/chenle/GIRCSE/HAR/models/shift_gcn_ntu120_xsub.pt
-cp /path/to/Shift-GCN/save_models/ntu_ShiftGCN_joint_xsub.pt \
-  /data/chenle/GIRCSE/HAR/models/shift_gcn_ntu60_xsub.pt
-```
-
 默认数据配置使用已经预处理好的 NTU `.npz` 文件：
-
 - NTU120: `/data/chenle/GIRCSE/HAR/data/ntu_120/NTU120.npz`
 - NTU60: `/data/chenle/GIRCSE/HAR/data/ntu_60/NTU_60.npz`
-
 `.npz` 内部应包含 `x_data` 与 `y_data`，其中 `x_data` 采用 `[N, T, M*V*C]`
 布局，训练时会转换为 Shift-GCN 的 `[C, T, V, M]`。
 
-## 环境
+远程服务器（实验运行环境）的Python环境：/data/chenle/.conda/envs/gircse
+本地（agent修改代码）的Python环境：/Users/chenle/Desktop/gircse_env
 
-用户指定的 Python 环境：
+# Instruction
+下面是原始版本的项目介绍，你review并熟悉一下项目。现在的项目过于臃肿，比如configs文件太多，还有configs中有些参数都没有写清，运行指令繁杂等。我想实现用一个配置文件（通过修改配置文件的内容）即可实现所有训练（在NTU55_5、NTU48_12、NTU110_10、NTU96_24)，然后参数要全面，包括选用cuda、batch_size、eval_batch_size、eval_on_train、eval_steps等，然后将训练中的每个epoch后的权重都要保存下来（注意不用保存Qwen和GIRCSE的，它们是冻结的，只用保存训练的那些组件的权重就行），然后如果文件夹的名称一定要直观，比如train_NTU_55_5_BS5_EP5_K5这样，最好还能记录下训练起止时间到一个元信息json中（或者有更好的记录方式）。评估这边也是同理，我希望一个config解决。你先批判当前项目的问题，指出问题，然后结合上面我所说的进行修改。修改后依然以一个代码审查员的视角，审查我的代码有何不足，并进行修改，直到你觉得可以交付给你的同行Claude Opus 4.7进行审阅了。）
 
-```bash
-source /Users/bytedance/.pyenv/versions/3.10.15/envs/env310/bin/activate
-```
 
-本仓库不会自动安装或修改依赖。服务器部署时可按需执行：
-
-```bash
-pip install -r requirements.txt
-```
 
 ## 快速启动
 
@@ -235,42 +352,7 @@ python scripts/eval_k_scaling.py \
   --wandb_mode offline
 ```
 
-绘制本地曲线：
 
-```bash
-python visualization/plot_curves.py --log logs/experiment_latest.log
-```
-
-GIRCSE soft token 可视化导出：
-
-```bash
-CUDA_VISIBLE_DEVICES=0,1,2,3 python scripts/export_gircse_soft_tokens.py \
-  --base_model_path /data/chenle/GIRCSE/Qwen2.5-7B \
-  --adapter_path /data/chenle/GIRCSE/GIRCSE-QWEN7B \
-  --include_base \
-  --text "Why is it so hard to track down this card?" \
-  --instruction "Represent the intention of this text." \
-  --instruction_name intention \
-  --instruction "Represent the emotion of this text." \
-  --instruction_name emotion \
-  --k 20 \
-  --topk 30 \
-  --raw_topk 500 \
-  --output_json visualization/logs/gircse_soft_tokens_table4.json
-```
-
-打开可视化页面：
-
-```bash
-python -m http.server 8000
-```
-
-然后访问 `http://localhost:8000/visualization/soft_token_viewer.html`，上传导出的 JSON。
-页面支持查看每个 step 与 step group `1-5 / 6-10 / 11-20` 的 raw top tokens、
-filtered semantic tokens、过滤 anchor 后重归一化的 residual semantic tokens。
-可在页面中按 frequency、probability、rank 或 first step 切换排序。
-示例 JSON 位于
-`visualization/examples/gircse_soft_tokens_mock.json`。
 
 ## 输出规范
 
@@ -309,13 +391,9 @@ WARNING: cache missing for key X, falling back to raw data
 ```text
 configs/            # 显式实验配置
 scripts/            # Python 入口
-scripts_sh/         # Shell 启动示例
 src/                # 核心源码
 data/ntu_60/        # 预处理后的 NTU60 npz
 data/ntu_120/       # 预处理后的 NTU120 npz
 data/cache/         # 预处理缓存
 outputs/            # checkpoint、metrics、predictions
-visualization/      # 本地曲线绘图
-tests/              # 单元测试
-logs/               # 结构化文本日志
 ```
