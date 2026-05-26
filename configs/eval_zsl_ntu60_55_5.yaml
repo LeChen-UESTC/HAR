@@ -8,7 +8,7 @@ eval:
   split_key: manifest_test
   sample_scope: unseen
   candidate_scope: unseen
-  k: 5
-  batch_size: 8
+  k: 10
+  batch_size: 16
   num_workers: 4
   metrics: ["top1"]

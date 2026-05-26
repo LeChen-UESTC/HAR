@@ -14,7 +14,7 @@ from typing import Any
 
 DEFAULT_BASE_MODEL_PATH = "/data/chenle/GIRCSE/Qwen2.5-7B"
 DEFAULT_ADAPTER_PATH = "/data/chenle/GIRCSE/GIRCSE-QWEN7B"
-DEFAULT_TEXT = "Why is it so hard to track down this card?"
+DEFAULT_TEXT = "Why is your English so excellent?"
 DEFAULT_INSTRUCTIONS = [
     "Represent the intention of this text.",
     "Represent the emotion of this text.",

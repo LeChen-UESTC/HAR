@@ -1,12 +1,12 @@
-base_config: /data/chenle/GIRCSE/HAR/configs/ntu60_zsl_48_12.yaml
+base_config: /data/chenle/GIRCSE/HAR/configs/ntu60_zsl_55_5.yaml
 
 experiment:
-  tags: ["ntu60", "48-12", "warmup", "classwise-infonce"]
+  tags: ["ntu60", "55-5", "warmup", "classwise-infonce"]
 
 train:
   stage: prealign
   epochs: 10
-  batch_size: 64
+  batch_size: 16
   lr_projector: 0.0001
   lr_shift_gcn: 0.00001
   freeze_shift_gcn: true
@@ -14,7 +14,7 @@ train:
 
 model:
   projector:
-    type: part_aware_qformer
+    type: qformer
     in_dim: 256
     llm_dim: 3584
     target_temporal_bins: 4

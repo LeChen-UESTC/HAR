@@ -11,8 +11,7 @@ venv/
 env/
 
 # Data and model artifacts
-/data/src/
-/data/cache/
+/data/
 /models/
 /outputs/
 /wandb/

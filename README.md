@@ -216,10 +216,10 @@ ZSL/GZSL 评估：
 如果要测试多个 `K`，使用 `eval_k_scaling.py` 和 `eval.k_values`。
 
 ```bash
-CUDA_VISIBLE_DEVICES=1,2 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+CUDA_VISIBLE_DEVICES=1,3,4 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 python scripts/eval_zsl.py \
   --config configs/eval_zsl_ntu60_55_5.yaml \
-  --checkpoint /data/chenle/GIRCSE/HAR/outputs/models/skeleton_gircse-ntu60-split_55_5-modality_skeleton-loss_stepwise_infonce_irr-proj_part_aware_qformer-dim_3584-K_5-eade367866-20260519_141225/last.ckpt \
+  --checkpoint /data/chenle/GIRCSE/HAR/outputs/models/ntu60_55_5_K10_Epoch10/epoch_8.ckpt \
   --wandb_mode offline
 
 CUDA_VISIBLE_DEVICES=1,2 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
