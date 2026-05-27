@@ -54,8 +54,13 @@ def run(ctx: dict, args) -> None:
     results = []
     original_k = model.soft_token_generator.K
     k_values = eval_cfg.get("k_values", config["model"]["soft_tokens"].get("k_test", [1, 3, 5, 10, 20]))
+    if not k_values:
+        raise ValueError("eval.k_values or model.soft_tokens.k_test must contain at least one K")
     for k in k_values:
-        model.soft_token_generator.K = int(k)
+        k = int(k)
+        if k < 1:
+            raise ValueError(f"eval.k_values must contain values >= 1, got {k}")
+        model.soft_token_generator.K = k
         metrics = evaluate_embedding_model(
             model=model,
             dataloader=test_loader,
@@ -63,7 +68,7 @@ def run(ctx: dict, args) -> None:
             device=device,
             class_ids=class_ids,
         )
-        item = {"k_test": int(k), "top1": metrics["top1"], "num_samples": metrics["num_samples"]}
+        item = {"k_test": k, "top1": metrics["top1"], "num_samples": metrics["num_samples"]}
         results.append(item)
         logger.info("K_test=%s top1=%.4f", k, metrics["top1"])
     model.soft_token_generator.K = original_k

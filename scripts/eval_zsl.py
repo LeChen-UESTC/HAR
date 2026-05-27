@@ -37,7 +37,10 @@ def run(ctx: dict, args) -> None:
     model = place_skeleton_gircse_model(build_skeleton_gircse_model(config), config, device)
     eval_k = eval_cfg.get("k")
     if eval_k is not None:
-        model.soft_token_generator.K = int(eval_k)
+        eval_k = int(eval_k)
+        if eval_k < 1:
+            raise ValueError(f"eval.k must be >= 1, got {eval_k}")
+        model.soft_token_generator.K = eval_k
     checkpoint = args.checkpoint or config.get("paths", {}).get("checkpoint")
     if checkpoint:
         load_checkpoint(

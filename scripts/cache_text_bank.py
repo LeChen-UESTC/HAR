@@ -4,13 +4,13 @@ from __future__ import annotations
 import _bootstrap  # noqa: F401
 
 from src.text_branch.cache_text_bank import cache_text_bank_from_config
-from src.train.common import parse_common_args
-from src.utils.config_utils import apply_overrides, load_config
+from src.train.common import apply_runtime_environment, materialize_run_config, parse_common_args
 
 
 def main() -> None:
     args = parse_common_args("Cache GIRCSE text embeddings.")
-    config = apply_overrides(load_config(args.config), args.override)
+    config = materialize_run_config(args, run_kind="text_bank")
+    apply_runtime_environment(config)
     cache_text_bank_from_config(config)
 
 

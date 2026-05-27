@@ -3,50 +3,36 @@ project:
 
 experiment:
   project_name: skeleton-gircse
-  # 可选值: NTU55_5=NTU60 55 seen / 5 unseen; NTU48_12=NTU60 48/12;
-  # NTU110_10=NTU120 110/10; NTU96_24=NTU120 96/24.
-  active_split: NTU55_5
-  # 可选值: compact=短实验名; 其他值=包含数据、模型、loss、hash 的详细实验名.
+  active_split: NTU55_5 # NTU55_5 / NTU48_12 / NTU110_10 / NTU96_24
   name_style: compact
   seed: 42
   output_root: "{project_root}/outputs"
   log_root: "{project_root}/logs"
-  # 可选值: offline=只写本地 W&B 日志; online=同步到 W&B; disabled=不启用 W&B.
   wandb_mode: offline
   tags: ["skeleton-gircse", "single-config"]
 
 runtime:
-  cuda_visible_devices: null
-  # 可选值: cuda=使用 CUDA; cpu=强制 CPU; 其他 torch.device 字符串按 PyTorch 解析.
+  cuda_visible_devices: "0,1"
   device: cuda
-  # 可选值: auto=CUDA 默认 bfloat16 / CPU 回退 float32; bfloat16/bf16; float16/fp16; float32/fp32.
   torch_dtype: bfloat16
   fallback_to_float32_on_cpu: true
   trust_remote_code: true
-  # 可选值: null=使用 Transformers 默认注意力; eager/sdpa/flash_attention_2=透传给 HF attn_implementation.
   attn_implementation: null
-  # 可选值: auto=HF 自动放置 text LLM; null=不传 device_map; dict/string=按 Transformers device_map 语义.
   device_map_text: auto
-  # 可选值: auto=HF 自动放置 train/eval LLM; null=整模型走 runtime.device; dict/string=按 Transformers device_map 语义.
   device_map_train: auto
 
 paths:
   cache_root: "{project_root}/data/cache"
   class_names: "{project_root}/data/index_action_map.json"
-  split_file: null
   qwen_instruct_model: /data/chenle/GIRCSE/Qwen2.5-7B
   gircse_base_model: /data/chenle/GIRCSE/Qwen2.5-7B
   gircse_adapter: /data/chenle/GIRCSE/GIRCSE-QWEN7B
-  gircse_model: /data/chenle/GIRCSE/GIRCSE-QWEN7B
   text_bank: "{project_root}/data/cache/text_embeddings_ntu120_zsl.pt"
   description_cache: "{project_root}/data/cache/rich_descriptions_ntu120.json"
 
 dataset:
-  # 可选值: npz=从 paths.*_npz/npz_data 读取预处理数组; manifest=从 manifest_* 文件读取样本路径.
   source_format: npz
-  # 可选值: zsl=zero-shot，NPZ loader 按 seen/unseen 过滤; 其他值=不触发 zsl 类别过滤.
   split: zsl
-  # 约定值: synse_purls=SynSE/PURLS zero-shot 划分协议; 当前代码主要作为配置元数据.
   split_protocol: synse_purls
   skeleton_shape:
     channels: 3
@@ -56,24 +42,19 @@ dataset:
   npz:
     x_key: x_data
     y_key: y_data
-    # 约定值: ntu_flat_t_mvc=NTU 预处理 NPZ 的 [T, M*V*C] 展平格式; loader 也会自动识别 [C,T,V,M] / [T,V,M,C].
     layout: ntu_flat_t_mvc
   sampling_strategy:
     fps: null
     max_frames: 300
     frame_interval: 1
     resolution: null
-    # 约定值: preprocessed_npz=已预处理 NPZ; none=无增强/原始采样. 当前主要进入缓存 hash.
     augmentation_version: preprocessed_npz
   preprocess_version: ntu_preprocessed_npz_v1
-  # 可选值: disabled/none/off=禁用缓存; validate_or_rebuild=校验缓存，不合法时重建.
   cache_policy: disabled
   allow_raw_fallback: false
 
 text_branch:
-  # 可选值: label_only=只用动作名; label_local_motion=动作名+局部运动;
-  # label_local_motion_object=再加 used object; full=再加 target object 和 environment.
-  description_variant: full
+  description_variant: full # label_only、label_local_motion、label_local_motion_object、full (+ environment)
   generation:
     num_classes: 120
     max_new_tokens: 512
@@ -85,38 +66,28 @@ text_branch:
     prompt: "Instruct: Represent the semantic meaning of the following human action description for zero-shot skeleton action recognition.\nQuery: {rich_description}"
     k_text: 20
     normalize: true
-    # 可选值: generate_mean=对生成 soft-token hidden states 取均值; last=只取最后一步 hidden state.
     pooling: generate_mean
     logit_temperature: 1.0
 
 model:
-  # 约定值: skeleton_gircse=当前 Skeleton-GIRCSE 模型配置; 当前代码不按此字段分发.
-  name: skeleton_gircse
-  # 可选值: skeleton=骨架分支模型; 当前训练/评估代码只实现 skeleton.
   modality: skeleton
   shift_gcn:
-    # 可选值: official_shift_gcn/shift_gcn/official=官方 Shift-GCN; simple_conv/lightweight/conv=轻量 Conv fallback.
     type: official_shift_gcn
     in_channels: 3
     num_joints: 25
     num_persons: 2
     graph_args:
-      # 可选值: spatial=NTU Shift-GCN 空间邻接图; 其他值会报错.
       labeling_mode: spatial
     hidden_dim: 256
     out_dim: 256
     dropout: 0.1
-    freeze: false
   projector:
-    # 可选值: linear/linear_layernorm=线性投影+LayerNorm;
-    # qformer=通用 Q-Former; general_qformer=qformer 且不加 part token; part_aware_qformer=Q-Former+身体部位 token.
-    type: part_aware_qformer
+    type: part_aware_qformer # linear / qformer / part_aware_qformer (+ part token embedding)
     in_dim: 256
     llm_dim: 3584
     target_temporal_bins: 4
     num_query_tokens: 7
-    # 约定值: head/left_arm/right_arm/torso/left_leg/right_leg/global;
-    # num_query_tokens 必须等于 query_roles 数量.
+    # num_query_tokens = query_roles数
     query_roles:
       - head
       - left_arm
@@ -135,9 +106,7 @@ model:
     initializer_range: 0.02
     init_from_pretrained: false
     pretrained_name_or_path: bert-base-uncased
-    use_part_token_embeddings: true
-    # 约定值: head/left_arm/right_arm/torso/left_leg/right_leg;
-    # joint_part_roles 长度必须等于 num_joints，每项描述对应关节所属身体部位.
+    # num_joints = joint_part_roles数
     joint_part_roles:
       - torso
       - torso
@@ -164,41 +133,31 @@ model:
       - left_arm
       - right_arm
       - right_arm
-    part_prior_loss:
-      enabled: false
-      weight: 0.0
   prompt:
     text: "Instruct: Represent the semantic meaning of the following human skeleton motion for zero-shot action recognition.\nQuery:"
   soft_tokens:
-    k_train: 5
-    k_test: [1, 3, 5, 10, 20]
-    # 可选值: generate_mean=对生成 soft-token hidden states 取均值; last=只取最后一步 hidden state.
+    k_train: [1, 5, 10, 20]
+    k_test: [1, 5, 10, 20]
     pooling: generate_mean
     logit_temperature: 1.0
 
 loss:
-  # 可选值: classwise_infonce=prealign 阶段单步类别对比损失;
-  # stepwise_infonce_irr=skeleton_gircse 阶段逐步 InfoNCE + iterative refinement regularizer.
   type: stepwise_infonce_irr
   temperature: 0.05
   lambda_irr: 1.0
 
 train:
-  # 可选值: prealign=骨架投影与 text bank 预对齐; skeleton_gircse=正式 Skeleton-GIRCSE 训练.
   stage: skeleton_gircse
 
 eval:
-  # 可选值: zsl=只在 unseen 类上评估; gzsl=seen+unseen 广义零样本; k_scaling=扫描 test-time K.
   task: zsl
 
+
 train_presets:
-  # preset 名称可选值同 train.stage: prealign, skeleton_gircse.
   prealign:
     runtime:
-      # 可选值同 runtime.device_map_train.
       device_map_train: null
     train:
-      # 可选值同 train.stage.
       stage: prealign
       epochs: 10
       batch_size: 16
@@ -206,28 +165,21 @@ train_presets:
       lr_projector: 0.0001
       lr_shift_gcn: 0.00001
       freeze_shift_gcn: true
-      freeze_llm: true
-      freeze_lm_head: true
       weight_decay: 0.01
       grad_clip_norm: 1.0
-      # 可选值: none=禁用 autocast; fp16=float16 autocast; bf16=bfloat16 autocast.
       mixed_precision: fp16
-      distributed: false
       eval_on_train: false
       eval_steps: null
       eval_every_epochs: 1
       save_freq: 1
       log_freq: 20
     loss:
-      # 可选值同 loss.type.
       type: classwise_infonce
       temperature: 0.05
   skeleton_gircse:
     runtime:
-      # 可选值同 runtime.device_map_train.
       device_map_train: auto
     train:
-      # 可选值同 train.stage.
       stage: skeleton_gircse
       epochs: 20
       batch_size: 1
@@ -238,35 +190,24 @@ train_presets:
       lr_shift_gcn: 0.00001
       freeze_shift_gcn: true
       freeze_llm: true
-      freeze_lm_head: true
       weight_decay: 0.01
       grad_clip_norm: 1.0
-      # 可选值: none=禁用 autocast; fp16=float16 autocast; bf16=bfloat16 autocast.
       mixed_precision: fp16
-      distributed: false
       eval_on_train: false
       eval_steps: null
       eval_every_epochs: 1
       save_freq: 1
       log_freq: 20
     loss:
-      # 可选值同 loss.type.
       type: stepwise_infonce_irr
       temperature: 0.05
       lambda_irr: 1.0
-    model:
-      soft_tokens:
-        k_train: 5
 
 eval_presets:
-  # preset 名称可选值同 eval.task: zsl, gzsl, k_scaling.
   zsl:
     eval:
-      # 可选值同 eval.task.
       task: zsl
-      # 约定值: eval_zsl/eval_gzsl/eval_k_scaling; 用于日志和实验命名，真正分发由 eval.task 决定.
       stage: eval_zsl
-      # 可选值: manifest_train/manifest_val/manifest_test; NPZ 模式下映射到 train_npz/val_npz/test_npz.
       split_key: manifest_test
       # 可选值: seen=只取 seen 类样本; unseen=只取 unseen 类样本; all/seen+unseen/gzsl=全部; none/null=不过滤.
       sample_scope: unseen
@@ -307,7 +248,6 @@ eval_presets:
       sample_scope: unseen
       # 可选值同 eval_presets.zsl.eval.candidate_scope.
       candidate_scope: unseen
-      k_values: [1, 3, 5, 10, 20]
       eval_batch_size: 8
       num_workers: 4
       # 可选值: top1=总体 top-1 accuracy.

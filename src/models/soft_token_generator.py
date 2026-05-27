@@ -18,9 +18,11 @@ class SoftTokenGenerator(nn.Module):
         pooling_method: str = "generate_mean",
     ) -> None:
         super().__init__()
+        if int(K) < 1:
+            raise ValueError(f"K must be >= 1, got {K}")
         self.llm = llm
         self.token_embedding_table = token_embedding_table
-        self.K = K
+        self.K = int(K)
         self.normalize = normalize
         self.logit_temperature = logit_temperature
         self.pooling_method = pooling_method

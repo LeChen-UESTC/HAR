@@ -23,6 +23,8 @@ def classwise_infonce(
     class_ids: torch.Tensor | None = None,
     return_per_sample: bool = False,
 ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+    if temperature <= 0:
+        raise ValueError(f"temperature must be > 0, got {temperature}")
     if z.shape[-1] != z_text.shape[-1]:
         raise ValueError(
             f"Embedding dim mismatch: z dim={z.shape[-1]} but z_text dim={z_text.shape[-1]}"

@@ -15,7 +15,10 @@ def cache_text_bank_from_config(config: dict[str, Any]) -> dict[str, Any]:
 
     class_names = load_class_names(
         paths["class_names"],
-        max_classes=config.get("dataset", {}).get("num_classes"),
+        max_classes=text_cfg.get("generation", {}).get(
+            "num_classes",
+            config.get("dataset", {}).get("num_classes"),
+        ),
     )
     with Path(paths["description_cache"]).open("r", encoding="utf-8") as handle:
         descriptions = json.load(handle)

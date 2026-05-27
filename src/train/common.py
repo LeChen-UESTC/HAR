@@ -66,7 +66,7 @@ def initialize_run(args: argparse.Namespace) -> dict[str, Any]:
     return initialize_run_for_kind(args, run_kind=None)
 
 
-def initialize_run_for_kind(args: argparse.Namespace, run_kind: str | None) -> dict[str, Any]:
+def materialize_run_config(args: argparse.Namespace, run_kind: str | None) -> dict[str, Any]:
     config_path = Path(args.config).expanduser().resolve()
     materialization_overrides = [
         item for item in args.override if is_materialization_override(item)
@@ -88,6 +88,11 @@ def initialize_run_for_kind(args: argparse.Namespace, run_kind: str | None) -> d
         config.setdefault("train", {})["eval_during_train"] = True
     if args.eval_freq is not None:
         config.setdefault("train", {})["eval_freq"] = args.eval_freq
+    return config
+
+
+def initialize_run_for_kind(args: argparse.Namespace, run_kind: str | None) -> dict[str, Any]:
+    config = materialize_run_config(args, run_kind)
 
     apply_runtime_environment(config)
     setup_distributed()
@@ -310,6 +315,10 @@ def build_dataloader(
             allow_raw_fallback=bool(dataset_cfg.get("allow_raw_fallback", True)),
             skipped_log_path=skipped_log_path,
             logger=logger,
+        )
+    if len(dataset) == 0:
+        raise ValueError(
+            f"Loaded zero samples for {manifest_key}; check dataset split, class scope, and data paths."
         )
     sampler = None
     if get_world_size() > 1:

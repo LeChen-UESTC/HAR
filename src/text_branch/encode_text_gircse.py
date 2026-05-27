@@ -25,6 +25,8 @@ class TextGIRCSEEncoder:
     ) -> None:
         import torch
 
+        if int(k_text) < 1:
+            raise ValueError(f"k_text must be >= 1, got {k_text}")
         self.torch = torch
         model_kwargs = {
             "torch_dtype": resolve_torch_dtype(torch_dtype, fallback_to_float32_on_cpu),
@@ -40,7 +42,7 @@ class TextGIRCSEEncoder:
             trust_remote_code=trust_remote_code,
         )
         self.model.eval()
-        self.k_text = k_text
+        self.k_text = int(k_text)
         self.normalize = normalize
         self.logit_temperature = logit_temperature
         self.pooling_method = pooling_method

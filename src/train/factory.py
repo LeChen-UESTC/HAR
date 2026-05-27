@@ -99,7 +99,7 @@ def build_skeleton_gircse_model(config: dict[str, Any]) -> SkeletonGIRCSE:
     generator = SoftTokenGenerator(
         llm=llm,
         token_embedding_table=llm.get_input_embeddings(),
-        K=int(config["model"]["soft_tokens"].get("k_train", 5)),
+        K=resolve_soft_token_k(config),
         normalize=True,
         logit_temperature=float(config["model"]["soft_tokens"].get("logit_temperature", 1.0)),
         pooling_method=str(config["model"]["soft_tokens"].get("pooling", "generate_mean")),
@@ -122,6 +122,39 @@ def place_skeleton_gircse_model(
         model.token_projector.to(device)
         return model
     return model.to(device)
+
+
+def resolve_soft_token_k(config: dict[str, Any]) -> int:
+    soft_cfg = config["model"]["soft_tokens"]
+    if config.get("_meta", {}).get("run_kind") == "eval":
+        eval_cfg = config.get("eval", {})
+        if eval_cfg.get("k") is not None:
+            return _positive_int(eval_cfg["k"], "eval.k")
+        if eval_cfg.get("k_values") is not None:
+            return max(_positive_int_list(eval_cfg["k_values"], "eval.k_values"))
+        if soft_cfg.get("k_test") is not None:
+            raw_k_test = soft_cfg["k_test"]
+            if isinstance(raw_k_test, list):
+                return max(_positive_int_list(raw_k_test, "model.soft_tokens.k_test"))
+            return _positive_int(raw_k_test, "model.soft_tokens.k_test")
+
+    raw = soft_cfg.get("k_train", 5)
+    if isinstance(raw, list):
+        return max(_positive_int_list(raw, "model.soft_tokens.k_train"))
+    return _positive_int(raw, "model.soft_tokens.k_train")
+
+
+def _positive_int(value: Any, name: str) -> int:
+    value = int(value)
+    if value < 1:
+        raise ValueError(f"{name} must be >= 1, got {value}")
+    return value
+
+
+def _positive_int_list(values: list[Any], name: str) -> list[int]:
+    if not values:
+        raise ValueError(f"{name} must not be an empty list")
+    return [_positive_int(value, name) for value in values]
 
 
 def _validate_frozen_shift_gcn_checkpoint(config: dict[str, Any]) -> None:

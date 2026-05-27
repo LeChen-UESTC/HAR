@@ -23,6 +23,8 @@ def gircse_soft_next_token_embedding(
     Source: https://github.com/Roytsai27/GIRCSE/tree/main/embedding
     Original logic: token_weight = softmax(logits / temp); return token_weight @ embedding_weight.
     """
+    if logit_temperature <= 0:
+        raise ValueError(f"logit_temperature must be > 0, got {logit_temperature}")
     token_weight = F.softmax(logits / logit_temperature, dim=-1)
     return token_weight.to(embedding_weight.dtype) @ embedding_weight
 
@@ -53,6 +55,8 @@ def gircse_iterative_soft_generation(
     `max_new_tokens + 1` extensions, then drops the first collected hidden
     state exactly as the official implementation does.
     """
+    if max_new_tokens < 1:
+        raise ValueError(f"max_new_tokens must be >= 1, got {max_new_tokens}")
     if attention_mask is None:
         attention_mask = torch.ones(
             input_embeds.shape[:2],

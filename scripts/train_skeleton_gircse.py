@@ -33,6 +33,12 @@ def run(ctx: dict, args) -> None:
     dirs = ctx["dirs"]
     device = select_device(config)
 
+    if isinstance(config.get("model", {}).get("soft_tokens", {}).get("k_train"), list):
+        raise ValueError(
+            "model.soft_tokens.k_train list sweeps are supported through scripts/train.py. "
+            "Use scripts/train.py or pass a single k_train value to scripts/train_skeleton_gircse.py."
+        )
+
     cache_manager = build_cache_manager(config, logger)
     train_loader = build_dataloader(config, "manifest_train", cache_manager, logger, train=True)
     val_loader = None
@@ -89,12 +95,15 @@ def run(ctx: dict, args) -> None:
         total_loss = 0.0
         total = 0
         running_logs: dict[str, float] = {}
+        pending_backward_steps = 0
+        valid_step = 0
         optimizer.zero_grad(set_to_none=True)
         for step, batch in enumerate(train_loader, start=1):
             batch = move_batch_to_device(batch, device)
             if batch is None:
                 continue
             global_step += 1
+            valid_step += 1
             with maybe_autocast(use_amp, config["train"].get("mixed_precision", "fp16")):
                 z_steps, _z_final = model(batch["skeleton"])
                 loss, logs = stepwise_infonce(
@@ -107,8 +116,9 @@ def run(ctx: dict, args) -> None:
                 )
                 loss_for_backward = loss / grad_accum_steps
             scaler.scale(loss_for_backward).backward()
+            pending_backward_steps += 1
 
-            should_step = step % grad_accum_steps == 0
+            should_step = valid_step % grad_accum_steps == 0
             if should_step:
                 grad_clip = config["train"].get("grad_clip_norm")
                 if grad_clip:
@@ -117,6 +127,7 @@ def run(ctx: dict, args) -> None:
                 scaler.step(optimizer)
                 scaler.update()
                 optimizer.zero_grad(set_to_none=True)
+                pending_backward_steps = 0
 
             batch_size = batch["label"].numel()
             total_loss += float(loss.detach()) * batch_size
@@ -149,7 +160,7 @@ def run(ctx: dict, args) -> None:
                 )
                 model.train()
 
-        if len(train_loader) % grad_accum_steps != 0:
+        if pending_backward_steps:
             grad_clip = config["train"].get("grad_clip_norm")
             if grad_clip:
                 scaler.unscale_(optimizer)
@@ -207,6 +218,7 @@ def run(ctx: dict, args) -> None:
             trainable_only=True,
         )
         update_run_registry(model_dir, dirs["exp_name"], epoch, metrics)
+
 
 def main() -> None:
     args = parse_common_args("Stage 2: generative Skeleton-GIRCSE training.")

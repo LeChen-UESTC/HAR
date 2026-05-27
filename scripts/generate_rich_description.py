@@ -6,13 +6,13 @@ import _bootstrap  # noqa: F401
 import logging
 
 from src.text_branch.generate_rich_description import generate_descriptions, load_class_names
-from src.train.common import parse_common_args
-from src.utils.config_utils import apply_overrides, load_config
+from src.train.common import apply_runtime_environment, materialize_run_config, parse_common_args
 
 
 def main() -> None:
     args = parse_common_args("Generate rich action descriptions with Qwen2.5.")
-    config = apply_overrides(load_config(args.config), args.override)
+    config = materialize_run_config(args, run_kind="text_description")
+    apply_runtime_environment(config)
     gen_cfg = config["text_branch"].get("generation", {})
     class_names = load_class_names(
         config["paths"]["class_names"],

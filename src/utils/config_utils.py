@@ -245,7 +245,7 @@ def build_experiment_name(config: Mapping[str, Any]) -> str:
     loss_type = get_nested(config, ["loss", "type"], "loss")
     proj_type = get_nested(config, ["model", "projector", "type"], "proj")
     proj_dim = get_nested(config, ["model", "projector", "llm_dim"], "d")
-    k_train = get_nested(config, ["model", "soft_tokens", "k_train"], "k")
+    k_train = _display_k_value(get_nested(config, ["model", "soft_tokens", "k_train"], "k"))
     stage = get_nested(config, ["eval", "stage"], get_nested(config, ["train", "stage"], "run"))
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     fp = config_fingerprint(
@@ -285,13 +285,29 @@ def build_compact_experiment_name(config: Mapping[str, Any]) -> str:
             ["eval", "eval_batch_size"],
             get_nested(config, ["eval", "batch_size"], "bs"),
         )
-        k_eval = get_nested(config, ["eval", "k"], get_nested(config, ["model", "soft_tokens", "k_train"], "k"))
+        k_eval = _display_k_value(
+            get_nested(
+                config,
+                ["eval", "k"],
+                get_nested(
+                    config,
+                    ["eval", "k_values"],
+                    get_nested(config, ["model", "soft_tokens", "k_test"], "k"),
+                ),
+            )
+        )
         return sanitize_name(f"eval_{task}_{dataset_label}_BS{batch_size}_K{k_eval}")
 
     batch_size = get_nested(config, ["train", "batch_size"], "bs")
     epochs = get_nested(config, ["train", "epochs"], "ep")
-    k_train = get_nested(config, ["model", "soft_tokens", "k_train"], "k")
+    k_train = _display_k_value(get_nested(config, ["model", "soft_tokens", "k_train"], "k"))
     return sanitize_name(f"train_{dataset_label}_BS{batch_size}_EP{epochs}_K{k_train}")
+
+
+def _display_k_value(value: Any) -> str:
+    if isinstance(value, list):
+        return "-".join(str(item) for item in value)
+    return str(value)
 
 
 def _dataset_split_label(dataset: str, split_name: str) -> str:
