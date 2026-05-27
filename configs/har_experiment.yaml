@@ -27,7 +27,7 @@ paths:
   qwen_instruct_model: /data/chenle/GIRCSE/Qwen2.5-7B
   gircse_base_model: /data/chenle/GIRCSE/Qwen2.5-7B
   gircse_adapter: /data/chenle/GIRCSE/GIRCSE-QWEN7B
-  text_bank: "{project_root}/data/cache/text_embeddings_ntu120_zsl.pt"
+  text_bank: "{project_root}/data/cache/text_embeddings_ntu{text_num_classes}_zsl_{description_variant}_ktext{k_text}_{text_pooling}.pt"
   description_cache: "{project_root}/data/cache/rich_descriptions_ntu120.json"
 
 dataset:

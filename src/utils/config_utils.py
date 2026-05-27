@@ -76,7 +76,7 @@ def normalize_config(config: dict[str, Any], config_path: Path) -> dict[str, Any
     result = _apply_named_preset(result, "train_presets", ["train", "stage"])
     result = _apply_named_preset(result, "eval_presets", ["eval", "task"])
     _normalize_aliases(result)
-    result = _expand_templates(result, {"project_root": str(project_root)})
+    result = _expand_templates(result, _template_replacements(result, project_root))
     result.setdefault("_meta", {})
     result["_meta"]["project_root"] = str(project_root)
     return result
@@ -152,6 +152,37 @@ def _copy_alias(config: dict[str, Any], alias: str, canonical: str) -> None:
             f"{config[alias]!r} != {config[canonical]!r}"
         )
     config[canonical] = config[alias]
+
+
+def _template_replacements(config: Mapping[str, Any], project_root: Path) -> dict[str, str]:
+    text_num_classes = get_nested(
+        config,
+        ["text_branch", "generation", "num_classes"],
+        get_nested(config, ["dataset", "num_classes"], ""),
+    )
+    values = {
+        "active_split": get_nested(
+            config,
+            ["_meta", "active_split"],
+            get_nested(config, ["experiment", "active_split"], ""),
+        ),
+        "dataset_name": get_nested(config, ["dataset", "name"], ""),
+        "dataset_num_classes": get_nested(config, ["dataset", "num_classes"], ""),
+        "split_name": get_nested(
+            config,
+            ["dataset", "split_name"],
+            get_nested(config, ["dataset", "split"], ""),
+        ),
+        "text_num_classes": text_num_classes,
+        "description_variant": get_nested(config, ["text_branch", "description_variant"], ""),
+        "k_text": get_nested(config, ["text_branch", "embedding", "k_text"], ""),
+        "text_pooling": get_nested(config, ["text_branch", "embedding", "pooling"], ""),
+    }
+    replacements = {"project_root": str(project_root)}
+    for key, value in values.items():
+        if value is not None and value != "":
+            replacements[key] = sanitize_name(str(value))
+    return replacements
 
 
 def _expand_templates(value: Any, replacements: Mapping[str, str]) -> Any:
