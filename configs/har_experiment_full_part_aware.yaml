@@ -1,0 +1,12 @@
+base_config: har_experiment.yaml
+
+experiment:
+  variant_name: full_part_aware
+  tags: ["skeleton-gircse", "full_part_aware"]
+
+text_branch:
+  description_variant: full
+
+model:
+  projector:
+    type: part_aware_qformer

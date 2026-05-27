@@ -70,6 +70,14 @@ def run(ctx: dict, args) -> None:
     global_step = 0
     eval_steps = config["train"].get("eval_steps")
     eval_steps = int(eval_steps) if eval_steps else None
+    checkpoint_extra = {
+        "text_mode": config.get("_meta", {}).get("text_mode"),
+        "text_variant": config.get("_meta", {}).get("text_variant"),
+        "projector_type": config.get("_meta", {}).get("projector_type"),
+        "projector_mode": config.get("_meta", {}).get("projector_mode"),
+        "text_bank_path": text_bank_path,
+        "train_stage": config.get("train", {}).get("stage"),
+    }
 
     for epoch in range(1, int(config["train"]["epochs"]) + 1):
         model.train()
@@ -138,6 +146,7 @@ def run(ctx: dict, args) -> None:
                     optimizer=optimizer,
                     epoch=epoch,
                     metrics=metrics,
+                    extra=checkpoint_extra,
                     include_prefixes=("shift_gcn.", "token_projector."),
                     trainable_only=True,
                 )
@@ -153,6 +162,7 @@ def run(ctx: dict, args) -> None:
                 optimizer=optimizer,
                 epoch=epoch,
                 metrics=metrics,
+                extra=checkpoint_extra,
                 include_prefixes=("shift_gcn.", "token_projector."),
                 trainable_only=True,
             )
@@ -162,6 +172,7 @@ def run(ctx: dict, args) -> None:
             optimizer=optimizer,
             epoch=epoch,
             metrics=metrics,
+            extra=checkpoint_extra,
             include_prefixes=("shift_gcn.", "token_projector."),
             trainable_only=True,
         )

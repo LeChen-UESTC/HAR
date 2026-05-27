@@ -1,0 +1,12 @@
+base_config: har_experiment.yaml
+
+experiment:
+  variant_name: full_linear
+  tags: ["skeleton-gircse", "full_linear"]
+
+text_branch:
+  description_variant: full
+
+model:
+  projector:
+    type: linear

@@ -160,7 +160,7 @@ train_presets:
     train:
       stage: prealign
       epochs: 10
-      batch_size: 16
+      batch_size: 128
       num_workers: 4
       lr_projector: 0.0001
       lr_shift_gcn: 0.00001
@@ -301,7 +301,7 @@ dataset_splits:
     train_presets:
       prealign:
         train:
-          batch_size: 64
+          batch_size: 128
   NTU110_10:
     experiment:
       tags: ["ntu120", "zsl", "110-10", "synse-purls"]
@@ -324,7 +324,7 @@ dataset_splits:
     train_presets:
       prealign:
         train:
-          batch_size: 64
+          batch_size: 128
   NTU96_24:
     experiment:
       tags: ["ntu120", "zsl", "96-24", "synse-purls"]
@@ -347,4 +347,4 @@ dataset_splits:
     train_presets:
       prealign:
         train:
-          batch_size: 74
+          batch_size: 128

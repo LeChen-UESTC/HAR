@@ -40,6 +40,8 @@ def run(ctx: dict, args) -> None:
             map_location="cpu",
             strict=False,
             include_prefixes=("shift_gcn.", "token_projector."),
+            expected_projector_type=config.get("_meta", {}).get("projector_type"),
+            expected_text_mode=config.get("_meta", {}).get("text_mode"),
         )
     else:
         logger.warning("No checkpoint provided; evaluating randomly initialized trainable modules.")
@@ -81,6 +83,7 @@ def run(ctx: dict, args) -> None:
             "top1": metrics["top1"],
             "num_samples": metrics["num_samples"],
             "text_mode": config.get("_meta", {}).get("text_mode"),
+            "projector_type": config.get("_meta", {}).get("projector_type"),
             "text_bank_path": text_bank_path,
         }
         results.append(item)

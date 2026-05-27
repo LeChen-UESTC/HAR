@@ -43,12 +43,13 @@ model.soft_tokens.k_train: [1, 5, 10, 20]
 说明：
 
 - sweep 只通过 `scripts/train.py` 生效。
-- 每个 K 会独立训练一次，输出目录区分为 `K1`、`K5`、`K10`、`K20`，并带 `text_mode` 后缀。
-- 如果手动传 `--exp_name xxx`，sweep 会自动改成 `xxx_K1_full`、`xxx_K5_full` 等，避免覆盖。
+- 每个 K 会独立训练一次，输出目录区分为 `K1`、`K5`、`K10`、`K20`，并带 `text_mode` 和 `projector_mode` 后缀。
+- 如果手动传 `--exp_name xxx`，sweep 会自动改成 `xxx_K1_full_part_aware_qformer`、`xxx_K5_full_part_aware_qformer` 等，避免覆盖。
 - 不要直接用 `scripts/train_skeleton_gircse.py` 跑 `k_train` 数组。
 - `model.soft_tokens.k_test` 只用于评估。
 - `text_bank_path: null` 表示使用全局 `paths.text_bank`；填路径则只覆盖第二阶段。
 - 加载 text bank 时会校验其 metadata 中的 `text_mode` 是否等于当前配置。
+- 加载 checkpoint 时会校验 `text_mode` 和 `projector_type` 是否等于当前配置。
 
 `model.projector.type` 可选：
 

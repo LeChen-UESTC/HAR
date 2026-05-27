@@ -1,0 +1,12 @@
+base_config: har_experiment.yaml
+
+experiment:
+  variant_name: label_linear
+  tags: ["skeleton-gircse", "label_linear"]
+
+text_branch:
+  description_variant: label_only
+
+model:
+  projector:
+    type: linear

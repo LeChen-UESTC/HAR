@@ -26,8 +26,9 @@ train_presets.prealign.loss.temperature
 - 第一阶段不加载 LLM，所以没有 `freeze_llm` / `freeze_lm_head`。
 - `device_map_train: null` 表示整个 warmup model 直接放到 `runtime.device`。
 - `text_bank_path: null` 表示使用全局 `paths.text_bank`；填路径则只覆盖第一阶段。
-- 输出目录会带 `text_mode` 后缀，例如 `_full`、`_label`。
+- 输出目录会带 `text_mode` 和 `projector_mode` 后缀，例如 `_full_part_aware_qformer`、`_label_linear`。
 - 加载 text bank 时会校验其 metadata 中的 `text_mode` 是否等于当前配置。
+- 第二阶段加载 warmup checkpoint 时会校验 `text_mode` 和 `projector_type` 是否等于当前配置。
 
 如需 warmup 期间验证：
 

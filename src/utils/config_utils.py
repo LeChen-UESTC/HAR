@@ -17,6 +17,14 @@ DESCRIPTION_VARIANT_SHORT_NAMES = {
     "full": "full",
 }
 
+PROJECTOR_TYPE_NAMES = {
+    "linear",
+    "linear_layernorm",
+    "qformer",
+    "general_qformer",
+    "part_aware_qformer",
+}
+
 
 def _load_yaml_module():
     try:
@@ -97,8 +105,11 @@ def expand_config_templates(config: dict[str, Any]) -> dict[str, Any]:
     )
     result.setdefault("_meta", {})
     text_variant = get_nested(result, ["text_branch", "description_variant"], "")
+    projector_type = get_nested(result, ["model", "projector", "type"], "")
     result["_meta"]["text_variant"] = short_description_variant(text_variant)
     result["_meta"]["text_mode"] = text_mode_suffix_from_variant(text_variant)
+    result["_meta"]["projector_type"] = normalized_projector_type(projector_type)
+    result["_meta"]["projector_mode"] = projector_suffix_from_type(projector_type)
     return _expand_templates(result, _template_replacements(result, project_root))
 
 
@@ -183,6 +194,8 @@ def _template_replacements(config: Mapping[str, Any], project_root: Path) -> dic
     description_variant = get_nested(config, ["text_branch", "description_variant"], "")
     text_variant = short_description_variant(description_variant)
     text_mode = text_mode_suffix_from_variant(description_variant)
+    projector_type = normalized_projector_type(get_nested(config, ["model", "projector", "type"], ""))
+    projector_mode = projector_suffix_from_type(projector_type)
     values = {
         "active_split": get_nested(
             config,
@@ -200,6 +213,8 @@ def _template_replacements(config: Mapping[str, Any], project_root: Path) -> dic
         "description_variant": description_variant,
         "description_variant_short": text_variant,
         "k_text": get_nested(config, ["text_branch", "embedding", "k_text"], ""),
+        "projector_mode": projector_mode,
+        "projector_type": projector_type,
         "text_mode": text_mode,
         "text_variant": text_variant,
         "text_pooling": get_nested(config, ["text_branch", "embedding", "pooling"], ""),
@@ -207,8 +222,8 @@ def _template_replacements(config: Mapping[str, Any], project_root: Path) -> dic
     replacements = {"project_root": str(project_root)}
     for key, value in values.items():
         if value is not None and value != "":
-            if key == "text_mode":
-                replacements[key] = text_mode_suffix_from_variant(description_variant)
+            if key in {"text_mode", "projector_mode"}:
+                replacements[key] = str(value)
             else:
                 replacements[key] = sanitize_name(str(value))
     return replacements
@@ -236,6 +251,32 @@ def text_mode_suffix(config: Mapping[str, Any]) -> str:
     if meta_value:
         return str(meta_value)
     return text_mode_suffix_from_variant(get_nested(config, ["text_branch", "description_variant"], ""))
+
+
+def normalized_projector_type(value: Any) -> str:
+    raw = str(value or "")
+    if not raw:
+        return ""
+    if raw not in PROJECTOR_TYPE_NAMES:
+        choices = ", ".join(sorted(PROJECTOR_TYPE_NAMES))
+        raise ValueError(f"Unknown model.projector.type={raw!r}. Available values: {choices}")
+    return raw
+
+
+def projector_suffix_from_type(value: Any) -> str:
+    projector_type = normalized_projector_type(value)
+    return f"_{projector_type}" if projector_type else ""
+
+
+def projector_suffix(config: Mapping[str, Any]) -> str:
+    meta_value = get_nested(config, ["_meta", "projector_mode"])
+    if meta_value:
+        return str(meta_value)
+    return projector_suffix_from_type(get_nested(config, ["model", "projector", "type"], ""))
+
+
+def run_identity_suffix(config: Mapping[str, Any]) -> str:
+    return f"{text_mode_suffix(config)}{projector_suffix(config)}"
 
 
 def _expand_templates(value: Any, replacements: Mapping[str, str]) -> Any:
@@ -352,7 +393,7 @@ def build_experiment_name(config: Mapping[str, Any]) -> str:
     )
     raw = (
         f"{stage}-{dataset}-split_{split_name}-modality_{modality}-loss_{loss_type}-"
-        f"proj_{proj_type}-dim_{proj_dim}-K_{k_value}-{fp}-{stamp}{text_mode_suffix(config)}"
+        f"proj_{proj_type}-dim_{proj_dim}-K_{k_value}-{fp}-{stamp}{run_identity_suffix(config)}"
     )
     return sanitize_name(raw)
 
@@ -384,15 +425,15 @@ def build_compact_experiment_name(config: Mapping[str, Any]) -> str:
                 ),
             )
         )
-        return sanitize_name(f"eval_{task}_{dataset_label}_BS{batch_size}_K{k_eval}{text_mode_suffix(config)}")
+        return sanitize_name(f"eval_{task}_{dataset_label}_BS{batch_size}_K{k_eval}{run_identity_suffix(config)}")
 
     stage = str(get_nested(config, ["train", "stage"], "train"))
     batch_size = get_nested(config, ["train", "batch_size"], "bs")
     epochs = get_nested(config, ["train", "epochs"], "ep")
     if stage in {"prealign", "warmup"}:
-        return sanitize_name(f"train_{stage}_{dataset_label}_BS{batch_size}_EP{epochs}{text_mode_suffix(config)}")
+        return sanitize_name(f"train_{stage}_{dataset_label}_BS{batch_size}_EP{epochs}{run_identity_suffix(config)}")
     k_train = _display_k_for_stage(config, stage)
-    return sanitize_name(f"train_{stage}_{dataset_label}_BS{batch_size}_EP{epochs}_K{k_train}{text_mode_suffix(config)}")
+    return sanitize_name(f"train_{stage}_{dataset_label}_BS{batch_size}_EP{epochs}_K{k_train}{run_identity_suffix(config)}")
 
 
 def _display_k_for_stage(config: Mapping[str, Any], stage: str) -> str:
@@ -421,25 +462,61 @@ def _display_k_value(value: Any) -> str:
 
 
 def ensure_text_mode_suffix(value: str, config: Mapping[str, Any]) -> str:
+    return ensure_run_identity_suffix(value, config)
+
+
+def ensure_run_identity_suffix(value: str, config: Mapping[str, Any]) -> str:
     name = sanitize_name(value)
-    suffix = text_mode_suffix(config)
-    if not suffix:
+    text_suffix = text_mode_suffix(config)
+    projector_mode = projector_suffix(config)
+    if not text_suffix and not projector_mode:
         return name
-    known_suffixes = {
+    known_text_suffixes = {
         f"_{short}" for short in DESCRIPTION_VARIANT_SHORT_NAMES.values()
     }
-    existing_suffix = next(
-        (item for item in sorted(known_suffixes, key=len, reverse=True) if name.endswith(item)),
+    known_projector_suffixes = {
+        f"_{projector_type}" for projector_type in PROJECTOR_TYPE_NAMES
+    }
+
+    base = name
+    projector_suffix_in_name = None
+    text_suffix_in_name = None
+
+    canonical_projector = _pop_known_suffix(name, known_projector_suffixes)
+    if canonical_projector:
+        base, projector_suffix_in_name = canonical_projector
+        canonical_text = _pop_known_suffix(base, known_text_suffixes)
+        if canonical_text:
+            base, text_suffix_in_name = canonical_text
+    else:
+        reverse_text = _pop_known_suffix(name, known_text_suffixes)
+        if reverse_text:
+            base, text_suffix_in_name = reverse_text
+            reverse_projector = _pop_known_suffix(base, known_projector_suffixes)
+            if reverse_projector:
+                base, projector_suffix_in_name = reverse_projector
+
+    if text_suffix_in_name and text_suffix_in_name != text_suffix:
+        raise ValueError(
+            f"exp_name already contains text_mode {text_suffix_in_name}, "
+            f"but current config requires {text_suffix}"
+        )
+    if projector_suffix_in_name and projector_suffix_in_name != projector_mode:
+        raise ValueError(
+            f"exp_name already contains projector suffix {projector_suffix_in_name}, "
+            f"but current config requires {projector_mode}"
+        )
+    return sanitize_name(f"{base}{text_suffix}{projector_mode}")
+
+
+def _pop_known_suffix(value: str, suffixes: set[str]) -> tuple[str, str] | None:
+    suffix = next(
+        (item for item in sorted(suffixes, key=len, reverse=True) if value.endswith(item)),
         None,
     )
-    if existing_suffix:
-        if existing_suffix != suffix:
-            raise ValueError(
-                f"exp_name already ends with text_mode {existing_suffix}, "
-                f"but current config requires {suffix}"
-            )
-        return name
-    return sanitize_name(f"{name}{suffix}")
+    if not suffix:
+        return None
+    return value[: -len(suffix)], suffix
 
 
 def _dataset_split_label(dataset: str, split_name: str) -> str:

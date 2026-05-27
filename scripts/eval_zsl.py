@@ -50,6 +50,8 @@ def run(ctx: dict, args) -> None:
             map_location="cpu",
             strict=False,
             include_prefixes=("shift_gcn.", "token_projector."),
+            expected_projector_type=config.get("_meta", {}).get("projector_type"),
+            expected_text_mode=config.get("_meta", {}).get("text_mode"),
         )
     else:
         logger.warning("No checkpoint provided; evaluating randomly initialized trainable modules.")
@@ -74,6 +76,7 @@ def run(ctx: dict, args) -> None:
         class_ids=class_ids,
     )
     metrics["text_mode"] = config.get("_meta", {}).get("text_mode")
+    metrics["projector_type"] = config.get("_meta", {}).get("projector_type")
     metrics["text_bank_path"] = text_bank_path
     logger.info("ZSL top1=%.4f num_samples=%s", metrics["top1"], metrics["num_samples"])
     save_eval_outputs(metrics, Path(dirs["eval_dir"]))

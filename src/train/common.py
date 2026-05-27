@@ -146,6 +146,7 @@ def is_materialization_override(item: str) -> bool:
             "dataset.active_split",
             "train.stage",
             "eval.task",
+            "model.projector.type",
             "paths.text_bank",
             "text_branch.description_variant",
             "text_branch.generation.num_classes",
@@ -207,6 +208,8 @@ def write_run_meta(
         "active_split": config.get("_meta", {}).get("active_split"),
         "text_variant": config.get("_meta", {}).get("text_variant"),
         "text_mode": config.get("_meta", {}).get("text_mode"),
+        "projector_type": config.get("_meta", {}).get("projector_type"),
+        "projector_mode": config.get("_meta", {}).get("projector_mode"),
         "text_bank_path": resolve_text_bank_path(
             config,
             "eval" if run_kind == "eval" else "train" if run_kind == "train" else None,

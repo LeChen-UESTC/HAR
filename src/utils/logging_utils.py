@@ -69,10 +69,12 @@ def log_config_summary(logger: logging.Logger, config: dict[str, Any]) -> None:
     stage = config.get("train", {}).get("stage", "unknown")
     loss_type = config.get("loss", {}).get("type", "unknown")
     text_mode = config.get("_meta", {}).get("text_mode", "unknown")
+    projector_type = config.get("_meta", {}).get("projector_type", "unknown")
     logger.info(
-        "Run summary: dataset=%s stage=%s loss=%s text_mode=%s",
+        "Run summary: dataset=%s stage=%s loss=%s text_mode=%s projector=%s",
         dataset,
         stage,
         loss_type,
         text_mode,
+        projector_type,
     )
