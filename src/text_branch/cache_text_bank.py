@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,7 @@ from .generate_rich_description import load_class_names
 
 
 def cache_text_bank_from_config(config: dict[str, Any]) -> dict[str, Any]:
+    logger = logging.getLogger(__name__)
     paths = config["paths"]
     text_cfg = config["text_branch"]
     embedding_cfg = text_cfg["embedding"]
@@ -19,6 +21,15 @@ def cache_text_bank_from_config(config: dict[str, Any]) -> dict[str, Any]:
             "num_classes",
             config.get("dataset", {}).get("num_classes"),
         ),
+    )
+    if not class_names:
+        raise ValueError("No class names loaded for text bank caching")
+    logger.info(
+        "Caching text bank: classes=%s description_cache=%s output=%s k_text=%s",
+        len(class_names),
+        paths["description_cache"],
+        paths["text_bank"],
+        embedding_cfg.get("k_text", 20),
     )
     with Path(paths["description_cache"]).open("r", encoding="utf-8") as handle:
         descriptions = json.load(handle)

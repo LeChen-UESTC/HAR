@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -103,11 +104,13 @@ def encode_text_bank(
 
     from .description_templates import build_rich_description
 
+    logger = logging.getLogger(__name__)
     rich = {
         label: build_rich_description(descriptions.get(label, label), variant=variant)
         for label in class_names
     }
     prompts = [prompt_template.format(rich_description=rich[label]) for label in class_names]
+    logger.info("Loading GIRCSE text encoder: base=%s adapter=%s", base_model_path, adapter_path)
     encoder = TextGIRCSEEncoder(
         base_model_path=base_model_path,
         adapter_path=adapter_path,
@@ -121,6 +124,7 @@ def encode_text_bank(
         trust_remote_code=bool((runtime or {}).get("trust_remote_code", True)),
         device_map=(runtime or {}).get("device_map_text", "auto"),
     )
+    logger.info("Encoding %s text prompts with k_text=%s", len(prompts), k_text)
     z_text = encoder.encode(prompts)
 
     payload = {
@@ -141,4 +145,5 @@ def encode_text_bank(
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(payload, output_path)
+    logger.info("Saved text bank to %s", output_path)
     return payload
