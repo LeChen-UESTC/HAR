@@ -154,7 +154,10 @@ def _positive_int(value: Any, name: str) -> int:
 def _positive_int_list(values: list[Any], name: str) -> list[int]:
     if not values:
         raise ValueError(f"{name} must not be an empty list")
-    return [_positive_int(value, name) for value in values]
+    parsed = [_positive_int(value, name) for value in values]
+    if len(set(parsed)) != len(parsed):
+        raise ValueError(f"{name} contains duplicate values: {parsed}")
+    return parsed
 
 
 def _validate_frozen_shift_gcn_checkpoint(config: dict[str, Any]) -> None:

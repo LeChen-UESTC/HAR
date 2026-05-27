@@ -18,6 +18,8 @@ from src.train.common import (
     maybe_autocast,
     move_batch_to_device,
     parse_common_args,
+    resolve_mixed_precision,
+    resolve_text_bank_path,
     select_device,
 )
 from src.train.factory import build_optimizer, build_warmup_model
@@ -40,7 +42,13 @@ def run(ctx: dict, args) -> None:
         val_loader = build_dataloader(config, "manifest_val", cache_manager, logger, train=False)
     model = build_warmup_model(config).to(device)
     optimizer = build_optimizer(config, model)
-    z_text, class_ids = load_text_bank(config["paths"]["text_bank"], device)
+    text_bank_path = resolve_text_bank_path(config, "train")
+    logger.info("Using text bank: mode=%s path=%s", config.get("_meta", {}).get("text_mode"), text_bank_path)
+    z_text, class_ids = load_text_bank(
+        text_bank_path,
+        device,
+        expected_text_mode=config.get("_meta", {}).get("text_mode"),
+    )
     z_text, class_ids = select_text_classes(
         z_text,
         class_ids,
@@ -54,7 +62,8 @@ def run(ctx: dict, args) -> None:
             "Regenerate the text bank with the configured GIRCSE model or fix model.projector.llm_dim."
         )
     temperature = float(config["loss"].get("temperature", 0.05))
-    use_amp = config["train"].get("mixed_precision", "none") in {"fp16", "bf16"}
+    mixed_precision = resolve_mixed_precision(config["train"])
+    use_amp = mixed_precision in {"fp16", "bf16"}
     scaler = torch.cuda.amp.GradScaler(enabled=use_amp and torch.cuda.is_available())
     metrics_path = Path(dirs["model_dir"]) / "metrics.jsonl"
     best_top1 = -1.0
@@ -72,7 +81,7 @@ def run(ctx: dict, args) -> None:
                 continue
             global_step += 1
             optimizer.zero_grad(set_to_none=True)
-            with maybe_autocast(use_amp, config["train"].get("mixed_precision", "fp16")):
+            with maybe_autocast(use_amp, mixed_precision):
                 z = model(batch["skeleton"])
                 loss = classwise_infonce(z, z_text, batch["label"], temperature, class_ids=class_ids)
             scaler.scale(loss).backward()

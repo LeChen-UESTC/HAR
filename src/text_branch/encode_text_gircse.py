@@ -6,6 +6,7 @@ from typing import Any
 
 from src.models.gircse_adapter import gircse_iterative_soft_generation
 from src.models.gircse_loader import load_gircse_model_and_tokenizer
+from src.utils.config_utils import text_mode_suffix_from_variant
 from src.utils.torch_utils import resolve_torch_dtype
 
 
@@ -136,6 +137,7 @@ def encode_text_bank(
             "adapter_path": adapter_path,
             "prompt_template": prompt_template,
             "description_variant": variant,
+            "text_mode": text_mode_suffix_from_variant(variant),
             "k_text": k_text,
             "normalize": normalize,
             "logit_temperature": logit_temperature,

@@ -32,19 +32,22 @@ full
 默认输出文件名会携带关键文本配置：
 
 ```yaml
-paths.text_bank: "{project_root}/data/cache/text_embeddings_ntu{text_num_classes}_zsl_{description_variant}_ktext{k_text}_{text_pooling}.pt"
+paths.text_bank: "{project_root}/data/cache/text_embeddings_ntu{text_num_classes}_zsl{text_mode}.pt"
 ```
 
 例如：
 
 ```text
-text_embeddings_ntu120_zsl_full_ktext20_generate_mean.pt
-text_embeddings_ntu120_zsl_label_only_ktext20_generate_mean.pt
+text_embeddings_ntu120_zsl_full.pt
+text_embeddings_ntu120_zsl_label.pt
+text_embeddings_ntu120_zsl_label_local_motion.pt
 ```
 
 说明：
 
 - `k_text` 是 text branch 的 GIRCSE soft-token 生成步数。
 - `pooling` 可选 `generate_mean` 或 `last`。
+- `text_mode` 是带下划线的产物后缀：`_full`、`_label`、`_label_local_motion`、`_label_local_motion_object`。
 - 改 description cache、GIRCSE 路径、`description_variant` 或 `text_branch.embedding.*` 后，应重新生成 `text_bank`。
-- 如果手动改 `paths.text_bank`，文件名也必须保留 `description_variant`、`k_text`、`pooling` 等会影响 embedding 的字段。
+- 如果你要同时比较不同 `k_text` 或 `pooling`，手动把它们也加进 `paths.text_bank`。
+- 保存的 text bank metadata 会记录 `description_variant` 和 `text_mode`，训练/评估加载时会做一致性校验。

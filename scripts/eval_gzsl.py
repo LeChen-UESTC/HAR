@@ -18,6 +18,7 @@ from src.train.common import (
     initialize_run_for_kind,
     load_text_bank,
     parse_common_args,
+    resolve_text_bank_path,
     select_device,
 )
 from src.train.factory import build_skeleton_gircse_model, place_skeleton_gircse_model
@@ -53,7 +54,12 @@ def run(ctx: dict, args) -> None:
     else:
         logger.warning("No checkpoint provided; evaluating randomly initialized trainable modules.")
 
-    z_text, class_ids = load_text_bank(config["paths"]["text_bank"], device)
+    text_bank_path = resolve_text_bank_path(config, "eval")
+    z_text, class_ids = load_text_bank(
+        text_bank_path,
+        device,
+        expected_text_mode=config.get("_meta", {}).get("text_mode"),
+    )
     candidate_classes = resolve_class_scope(config, eval_cfg.get("candidate_scope", "all"))
     z_text, class_ids = select_text_classes(z_text, class_ids, candidate_classes or None)
     gamma = float(eval_cfg.get("calibrated_stacking_gamma", 0.0))
@@ -67,6 +73,8 @@ def run(ctx: dict, args) -> None:
         gamma=gamma,
     )
     metrics["calibrated_stacking_gamma"] = gamma
+    metrics["text_mode"] = config.get("_meta", {}).get("text_mode")
+    metrics["text_bank_path"] = text_bank_path
     logger.info(
         "GZSL top1=%.4f seen=%.4f unseen=%.4f H=%.4f num_samples=%s gamma=%.4f",
         metrics["top1"],

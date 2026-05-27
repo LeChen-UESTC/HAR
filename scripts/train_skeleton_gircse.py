@@ -18,6 +18,8 @@ from src.train.common import (
     maybe_autocast,
     move_batch_to_device,
     parse_common_args,
+    resolve_mixed_precision,
+    resolve_text_bank_path,
     select_device,
 )
 from src.train.factory import build_optimizer, build_skeleton_gircse_model, place_skeleton_gircse_model
@@ -71,7 +73,13 @@ def run(ctx: dict, args) -> None:
         )
         logger.info("Loaded warmup checkpoint: %s", args.checkpoint)
     optimizer = build_optimizer(config, model)
-    z_text, class_ids = load_text_bank(config["paths"]["text_bank"], device)
+    text_bank_path = resolve_text_bank_path(config, "train")
+    logger.info("Using text bank: mode=%s path=%s", config.get("_meta", {}).get("text_mode"), text_bank_path)
+    z_text, class_ids = load_text_bank(
+        text_bank_path,
+        device,
+        expected_text_mode=config.get("_meta", {}).get("text_mode"),
+    )
     z_text, class_ids = select_text_classes(
         z_text,
         class_ids,
@@ -79,7 +87,8 @@ def run(ctx: dict, args) -> None:
     )
     temperature = float(config["loss"].get("temperature", 0.05))
     lambda_irr = float(config["loss"].get("lambda_irr", 1.0))
-    use_amp = config["train"].get("mixed_precision", "none") in {"fp16", "bf16"}
+    mixed_precision = resolve_mixed_precision(config["train"])
+    use_amp = mixed_precision in {"fp16", "bf16"}
     scaler = torch.cuda.amp.GradScaler(enabled=use_amp and torch.cuda.is_available())
     grad_accum_steps = int(config["train"].get("gradient_accumulation_steps", 1))
     if grad_accum_steps < 1:
@@ -104,7 +113,7 @@ def run(ctx: dict, args) -> None:
                 continue
             global_step += 1
             valid_step += 1
-            with maybe_autocast(use_amp, config["train"].get("mixed_precision", "fp16")):
+            with maybe_autocast(use_amp, mixed_precision):
                 z_steps, _z_final = model(batch["skeleton"])
                 loss, logs = stepwise_infonce(
                     z_steps=z_steps,

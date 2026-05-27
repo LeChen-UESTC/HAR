@@ -14,6 +14,7 @@ from src.train.common import (
     initialize_run_for_kind,
     load_text_bank,
     parse_common_args,
+    resolve_text_bank_path,
     select_device,
 )
 from src.train.factory import build_skeleton_gircse_model, place_skeleton_gircse_model
@@ -43,7 +44,12 @@ def run(ctx: dict, args) -> None:
     else:
         logger.warning("No checkpoint provided; evaluating randomly initialized trainable modules.")
 
-    z_text, class_ids = load_text_bank(config["paths"]["text_bank"], device)
+    text_bank_path = resolve_text_bank_path(config, "eval")
+    z_text, class_ids = load_text_bank(
+        text_bank_path,
+        device,
+        expected_text_mode=config.get("_meta", {}).get("text_mode"),
+    )
     candidate_classes = resolve_class_scope(config, eval_cfg.get("candidate_scope", "unseen"))
     z_text, class_ids = select_text_classes(
         z_text,
@@ -56,8 +62,10 @@ def run(ctx: dict, args) -> None:
     k_values = eval_cfg.get("k_values", config["model"]["soft_tokens"].get("k_test", [1, 3, 5, 10, 20]))
     if not k_values:
         raise ValueError("eval.k_values or model.soft_tokens.k_test must contain at least one K")
+    k_values = [int(k) for k in k_values]
+    if len(set(k_values)) != len(k_values):
+        raise ValueError(f"eval.k_values or model.soft_tokens.k_test contains duplicate values: {k_values}")
     for k in k_values:
-        k = int(k)
         if k < 1:
             raise ValueError(f"eval.k_values must contain values >= 1, got {k}")
         model.soft_token_generator.K = k
@@ -68,7 +76,13 @@ def run(ctx: dict, args) -> None:
             device=device,
             class_ids=class_ids,
         )
-        item = {"k_test": k, "top1": metrics["top1"], "num_samples": metrics["num_samples"]}
+        item = {
+            "k_test": k,
+            "top1": metrics["top1"],
+            "num_samples": metrics["num_samples"],
+            "text_mode": config.get("_meta", {}).get("text_mode"),
+            "text_bank_path": text_bank_path,
+        }
         results.append(item)
         logger.info("K_test=%s top1=%.4f", k, metrics["top1"])
     model.soft_token_generator.K = original_k

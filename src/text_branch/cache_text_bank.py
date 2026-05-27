@@ -25,8 +25,9 @@ def cache_text_bank_from_config(config: dict[str, Any]) -> dict[str, Any]:
     if not class_names:
         raise ValueError("No class names loaded for text bank caching")
     logger.info(
-        "Caching text bank: classes=%s description_cache=%s output=%s k_text=%s",
+        "Caching text bank: classes=%s text_mode=%s description_cache=%s output=%s k_text=%s",
         len(class_names),
+        config.get("_meta", {}).get("text_mode"),
         paths["description_cache"],
         paths["text_bank"],
         embedding_cfg.get("k_text", 20),

@@ -27,7 +27,7 @@ paths:
   qwen_instruct_model: /data/chenle/GIRCSE/Qwen2.5-7B
   gircse_base_model: /data/chenle/GIRCSE/Qwen2.5-7B
   gircse_adapter: /data/chenle/GIRCSE/GIRCSE-QWEN7B
-  text_bank: "{project_root}/data/cache/text_embeddings_ntu{text_num_classes}_zsl_{description_variant}_ktext{k_text}_{text_pooling}.pt"
+  text_bank: "{project_root}/data/cache/text_embeddings_ntu{text_num_classes}_zsl{text_mode}.pt"
   description_cache: "{project_root}/data/cache/rich_descriptions_ntu120.json"
 
 dataset:
@@ -165,6 +165,7 @@ train_presets:
       lr_projector: 0.0001
       lr_shift_gcn: 0.00001
       freeze_shift_gcn: true
+      text_bank_path: null # null=使用 paths.text_bank；也可填某个 text bank .pt 路径.
       weight_decay: 0.01
       grad_clip_norm: 1.0
       mixed_precision: fp16
@@ -190,6 +191,7 @@ train_presets:
       lr_shift_gcn: 0.00001
       freeze_shift_gcn: true
       freeze_llm: true
+      text_bank_path: null # null=使用 paths.text_bank；也可填某个 text bank .pt 路径.
       weight_decay: 0.01
       grad_clip_norm: 1.0
       mixed_precision: fp16
@@ -213,6 +215,7 @@ eval_presets:
       sample_scope: unseen
       # 可选值同 sample_scope; 控制参与相似度分类的候选文本类别.
       candidate_scope: unseen
+      text_bank_path: null # null=使用 paths.text_bank；也可填某个 text bank .pt 路径.
       k: 10
       eval_batch_size: 16
       num_workers: 4
@@ -230,6 +233,7 @@ eval_presets:
       sample_scope: all
       # 可选值同 eval_presets.zsl.eval.candidate_scope.
       candidate_scope: all
+      text_bank_path: null # null=使用 paths.text_bank；也可填某个 text bank .pt 路径.
       k: 5
       eval_batch_size: 8
       num_workers: 4
@@ -248,6 +252,7 @@ eval_presets:
       sample_scope: unseen
       # 可选值同 eval_presets.zsl.eval.candidate_scope.
       candidate_scope: unseen
+      text_bank_path: null # null=使用 paths.text_bank；也可填某个 text bank .pt 路径.
       eval_batch_size: 8
       num_workers: 4
       # 可选值: top1=总体 top-1 accuracy.

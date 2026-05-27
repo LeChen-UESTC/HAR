@@ -10,6 +10,14 @@ from pathlib import Path
 from typing import Any, Mapping
 
 
+DESCRIPTION_VARIANT_SHORT_NAMES = {
+    "label_only": "label",
+    "label_local_motion": "label_local_motion",
+    "label_local_motion_object": "label_local_motion_object",
+    "full": "full",
+}
+
+
 def _load_yaml_module():
     try:
         import yaml  # type: ignore
@@ -76,10 +84,22 @@ def normalize_config(config: dict[str, Any], config_path: Path) -> dict[str, Any
     result = _apply_named_preset(result, "train_presets", ["train", "stage"])
     result = _apply_named_preset(result, "eval_presets", ["eval", "task"])
     _normalize_aliases(result)
-    result = _expand_templates(result, _template_replacements(result, project_root))
     result.setdefault("_meta", {})
     result["_meta"]["project_root"] = str(project_root)
+    result = expand_config_templates(result)
     return result
+
+
+def expand_config_templates(config: dict[str, Any]) -> dict[str, Any]:
+    result = copy.deepcopy(config)
+    project_root = Path(
+        str(get_nested(result, ["_meta", "project_root"], get_nested(result, ["project", "root"], ".")))
+    )
+    result.setdefault("_meta", {})
+    text_variant = get_nested(result, ["text_branch", "description_variant"], "")
+    result["_meta"]["text_variant"] = short_description_variant(text_variant)
+    result["_meta"]["text_mode"] = text_mode_suffix_from_variant(text_variant)
+    return _expand_templates(result, _template_replacements(result, project_root))
 
 
 def _project_root(config: Mapping[str, Any], config_path: Path) -> Path:
@@ -160,6 +180,9 @@ def _template_replacements(config: Mapping[str, Any], project_root: Path) -> dic
         ["text_branch", "generation", "num_classes"],
         get_nested(config, ["dataset", "num_classes"], ""),
     )
+    description_variant = get_nested(config, ["text_branch", "description_variant"], "")
+    text_variant = short_description_variant(description_variant)
+    text_mode = text_mode_suffix_from_variant(description_variant)
     values = {
         "active_split": get_nested(
             config,
@@ -174,15 +197,45 @@ def _template_replacements(config: Mapping[str, Any], project_root: Path) -> dic
             get_nested(config, ["dataset", "split"], ""),
         ),
         "text_num_classes": text_num_classes,
-        "description_variant": get_nested(config, ["text_branch", "description_variant"], ""),
+        "description_variant": description_variant,
+        "description_variant_short": text_variant,
         "k_text": get_nested(config, ["text_branch", "embedding", "k_text"], ""),
+        "text_mode": text_mode,
+        "text_variant": text_variant,
         "text_pooling": get_nested(config, ["text_branch", "embedding", "pooling"], ""),
     }
     replacements = {"project_root": str(project_root)}
     for key, value in values.items():
         if value is not None and value != "":
-            replacements[key] = sanitize_name(str(value))
+            if key == "text_mode":
+                replacements[key] = text_mode_suffix_from_variant(description_variant)
+            else:
+                replacements[key] = sanitize_name(str(value))
     return replacements
+
+
+def short_description_variant(value: Any) -> str:
+    raw = str(value or "")
+    if not raw:
+        return ""
+    if raw not in DESCRIPTION_VARIANT_SHORT_NAMES:
+        choices = ", ".join(sorted(DESCRIPTION_VARIANT_SHORT_NAMES))
+        raise ValueError(
+            f"Unknown text_branch.description_variant={raw!r}. Available values: {choices}"
+        )
+    return DESCRIPTION_VARIANT_SHORT_NAMES[raw]
+
+
+def text_mode_suffix_from_variant(value: Any) -> str:
+    short = short_description_variant(value)
+    return f"_{short}" if short else ""
+
+
+def text_mode_suffix(config: Mapping[str, Any]) -> str:
+    meta_value = get_nested(config, ["_meta", "text_mode"])
+    if meta_value:
+        return str(meta_value)
+    return text_mode_suffix_from_variant(get_nested(config, ["text_branch", "description_variant"], ""))
 
 
 def _expand_templates(value: Any, replacements: Mapping[str, str]) -> Any:
@@ -276,8 +329,8 @@ def build_experiment_name(config: Mapping[str, Any]) -> str:
     loss_type = get_nested(config, ["loss", "type"], "loss")
     proj_type = get_nested(config, ["model", "projector", "type"], "proj")
     proj_dim = get_nested(config, ["model", "projector", "llm_dim"], "d")
-    k_train = _display_k_value(get_nested(config, ["model", "soft_tokens", "k_train"], "k"))
     stage = get_nested(config, ["eval", "stage"], get_nested(config, ["train", "stage"], "run"))
+    k_value = _display_k_for_stage(config, str(stage))
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     fp = config_fingerprint(
         {
@@ -289,13 +342,17 @@ def build_experiment_name(config: Mapping[str, Any]) -> str:
             "loss": loss_type,
             "projector": get_nested(config, ["model", "projector"], {}),
             "soft_tokens": get_nested(config, ["model", "soft_tokens"], {}),
+            "text_branch": get_nested(config, ["text_branch"], {}),
+            "text_bank": get_nested(config, ["paths", "text_bank"], None),
+            "train_text_bank": get_nested(config, ["train", "text_bank_path"], None),
+            "eval_text_bank": get_nested(config, ["eval", "text_bank_path"], None),
             "sampling": get_nested(config, ["dataset", "sampling_strategy"], {}),
             "preprocess_version": get_nested(config, ["dataset", "preprocess_version"], None),
         }
     )
     raw = (
         f"{stage}-{dataset}-split_{split_name}-modality_{modality}-loss_{loss_type}-"
-        f"proj_{proj_type}-dim_{proj_dim}-K_{k_train}-{fp}-{stamp}"
+        f"proj_{proj_type}-dim_{proj_dim}-K_{k_value}-{fp}-{stamp}{text_mode_suffix(config)}"
     )
     return sanitize_name(raw)
 
@@ -327,18 +384,62 @@ def build_compact_experiment_name(config: Mapping[str, Any]) -> str:
                 ),
             )
         )
-        return sanitize_name(f"eval_{task}_{dataset_label}_BS{batch_size}_K{k_eval}")
+        return sanitize_name(f"eval_{task}_{dataset_label}_BS{batch_size}_K{k_eval}{text_mode_suffix(config)}")
 
+    stage = str(get_nested(config, ["train", "stage"], "train"))
     batch_size = get_nested(config, ["train", "batch_size"], "bs")
     epochs = get_nested(config, ["train", "epochs"], "ep")
-    k_train = _display_k_value(get_nested(config, ["model", "soft_tokens", "k_train"], "k"))
-    return sanitize_name(f"train_{dataset_label}_BS{batch_size}_EP{epochs}_K{k_train}")
+    if stage in {"prealign", "warmup"}:
+        return sanitize_name(f"train_{stage}_{dataset_label}_BS{batch_size}_EP{epochs}{text_mode_suffix(config)}")
+    k_train = _display_k_for_stage(config, stage)
+    return sanitize_name(f"train_{stage}_{dataset_label}_BS{batch_size}_EP{epochs}_K{k_train}{text_mode_suffix(config)}")
+
+
+def _display_k_for_stage(config: Mapping[str, Any], stage: str) -> str:
+    normalized = stage.lower()
+    if normalized in {"eval_zsl", "eval_gzsl", "eval_k_scaling", "zsl", "gzsl", "k_scaling"}:
+        return _display_k_value(
+            get_nested(
+                config,
+                ["eval", "k"],
+                get_nested(
+                    config,
+                    ["eval", "k_values"],
+                    get_nested(config, ["model", "soft_tokens", "k_test"], "k"),
+                ),
+            )
+        )
+    if normalized in {"prealign", "warmup"}:
+        return "none"
+    return _display_k_value(get_nested(config, ["model", "soft_tokens", "k_train"], "k"))
 
 
 def _display_k_value(value: Any) -> str:
     if isinstance(value, list):
         return "-".join(str(item) for item in value)
     return str(value)
+
+
+def ensure_text_mode_suffix(value: str, config: Mapping[str, Any]) -> str:
+    name = sanitize_name(value)
+    suffix = text_mode_suffix(config)
+    if not suffix:
+        return name
+    known_suffixes = {
+        f"_{short}" for short in DESCRIPTION_VARIANT_SHORT_NAMES.values()
+    }
+    existing_suffix = next(
+        (item for item in sorted(known_suffixes, key=len, reverse=True) if name.endswith(item)),
+        None,
+    )
+    if existing_suffix:
+        if existing_suffix != suffix:
+            raise ValueError(
+                f"exp_name already ends with text_mode {existing_suffix}, "
+                f"but current config requires {suffix}"
+            )
+        return name
+    return sanitize_name(f"{name}{suffix}")
 
 
 def _dataset_split_label(dataset: str, split_name: str) -> str:
@@ -379,14 +480,17 @@ def sanitize_name(value: str) -> str:
 
 
 def prepare_run_dirs(config: Mapping[str, Any], exp_name: str | None = None) -> dict[str, Path]:
-    name = exp_name or build_experiment_name(config)
+    name = ensure_text_mode_suffix(exp_name or build_experiment_name(config), config)
     output_root = Path(str(get_nested(config, ["experiment", "output_root"], "outputs")))
     log_root = Path(str(get_nested(config, ["experiment", "log_root"], "logs")))
     model_dir = output_root / "models" / name
     eval_dir = output_root / "eval" / name
+    run_kind = str(get_nested(config, ["_meta", "run_kind"], "train"))
     log_root.mkdir(parents=True, exist_ok=True)
-    model_dir.mkdir(parents=True, exist_ok=True)
-    eval_dir.mkdir(parents=True, exist_ok=True)
+    if run_kind == "eval":
+        eval_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        model_dir.mkdir(parents=True, exist_ok=True)
     return {
         "exp_name": Path(name),
         "model_dir": model_dir,

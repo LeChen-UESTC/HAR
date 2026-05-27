@@ -18,6 +18,7 @@ from src.train.common import (
     initialize_run_for_kind,
     load_text_bank,
     parse_common_args,
+    resolve_text_bank_path,
     select_device,
 )
 from src.train.factory import build_skeleton_gircse_model, place_skeleton_gircse_model
@@ -53,7 +54,12 @@ def run(ctx: dict, args) -> None:
     else:
         logger.warning("No checkpoint provided; evaluating randomly initialized trainable modules.")
 
-    z_text, class_ids = load_text_bank(config["paths"]["text_bank"], device)
+    text_bank_path = resolve_text_bank_path(config, "eval")
+    z_text, class_ids = load_text_bank(
+        text_bank_path,
+        device,
+        expected_text_mode=config.get("_meta", {}).get("text_mode"),
+    )
     candidate_classes = resolve_class_scope(config, eval_cfg.get("candidate_scope", "unseen"))
     z_text, class_ids = select_text_classes(
         z_text,
@@ -67,6 +73,8 @@ def run(ctx: dict, args) -> None:
         device=device,
         class_ids=class_ids,
     )
+    metrics["text_mode"] = config.get("_meta", {}).get("text_mode")
+    metrics["text_bank_path"] = text_bank_path
     logger.info("ZSL top1=%.4f num_samples=%s", metrics["top1"], metrics["num_samples"])
     save_eval_outputs(metrics, Path(dirs["eval_dir"]))
 

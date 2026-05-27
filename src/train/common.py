@@ -17,10 +17,12 @@ from src.data.dataset import NpzSkeletonDataset, SkeletonDataset, safe_collate
 from src.data.samplers import SamplingStrategy
 from src.utils.config_utils import (
     apply_overrides,
+    expand_config_templates,
     load_config,
     normalize_config,
     prepare_run_dirs,
     save_config,
+    text_mode_suffix_from_variant,
 )
 from src.utils.distributed import get_world_size, is_main_process, setup_distributed
 from src.utils.logging_utils import log_config_summary, setup_logger
@@ -76,10 +78,11 @@ def materialize_run_config(args: argparse.Namespace, run_kind: str | None) -> di
         config_path,
     )
     runtime_overrides = [
-        item for item in args.override if not is_preset_definition_override(item)
+        item for item in args.override if not is_materialization_override(item)
     ]
     config = apply_overrides(config, runtime_overrides)
     normalize_runtime_aliases(config)
+    config = expand_config_templates(config)
     if run_kind is not None:
         config.setdefault("_meta", {})["run_kind"] = run_kind
     if args.wandb_mode is not None:
@@ -101,9 +104,10 @@ def initialize_run_for_kind(args: argparse.Namespace, run_kind: str | None) -> d
     exp_name = str(dirs["exp_name"])
     logger, log_path = setup_logger(log_root=dirs["log_root"])
     log_config_summary(logger, config)
+    output_dir = run_output_dir(config, dirs)
 
     if is_main_process():
-        save_config(config, Path(dirs["model_dir"]) / "config.yaml")
+        save_config(config, output_dir / "config.yaml")
         meta_path = write_run_meta(config, dirs, status="running")
     else:
         meta_path = None
@@ -111,7 +115,7 @@ def initialize_run_for_kind(args: argparse.Namespace, run_kind: str | None) -> d
     wandb_run = init_wandb(
         config=config,
         exp_name=exp_name,
-        run_dir=dirs["model_dir"],
+        run_dir=output_dir,
         mode=config.get("experiment", {}).get("wandb_mode", "offline"),
         logger=logger,
     )
@@ -126,6 +130,13 @@ def initialize_run_for_kind(args: argparse.Namespace, run_kind: str | None) -> d
     }
 
 
+def run_output_dir(config: dict[str, Any], dirs: dict[str, Any]) -> Path:
+    run_kind = str(config.get("_meta", {}).get("run_kind") or "run")
+    if run_kind == "eval":
+        return Path(dirs["eval_dir"])
+    return Path(dirs["model_dir"])
+
+
 def is_materialization_override(item: str) -> bool:
     key = item.split("=", 1)[0]
     return (
@@ -135,13 +146,14 @@ def is_materialization_override(item: str) -> bool:
             "dataset.active_split",
             "train.stage",
             "eval.task",
+            "paths.text_bank",
+            "text_branch.description_variant",
+            "text_branch.generation.num_classes",
+            "text_branch.embedding.k_text",
+            "text_branch.embedding.pooling",
         }
         or is_preset_definition_key(key)
     )
-
-
-def is_preset_definition_override(item: str) -> bool:
-    return is_preset_definition_key(item.split("=", 1)[0])
 
 
 def is_preset_definition_key(key: str) -> bool:
@@ -193,6 +205,12 @@ def write_run_meta(
         "exp_name": str(dirs["exp_name"]),
         "run_kind": run_kind,
         "active_split": config.get("_meta", {}).get("active_split"),
+        "text_variant": config.get("_meta", {}).get("text_variant"),
+        "text_mode": config.get("_meta", {}).get("text_mode"),
+        "text_bank_path": resolve_text_bank_path(
+            config,
+            "eval" if run_kind == "eval" else "train" if run_kind == "train" else None,
+        ),
         "train_stage": config.get("train", {}).get("stage"),
         "eval_task": config.get("eval", {}).get("task"),
         "config_path": config.get("_meta", {}).get("config_path"),
@@ -337,11 +355,68 @@ def build_dataloader(
     )
 
 
-def load_text_bank(path: str | Path, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
-    payload = torch.load(path, map_location="cpu")
-    z_text = payload["z_text"].float().to(device)
-    class_ids = torch.arange(z_text.shape[0], dtype=torch.long, device=device)
+def load_text_bank(
+    path: str | Path,
+    device: torch.device,
+    expected_text_mode: str | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    text_bank_path = Path(path)
+    if not text_bank_path.exists():
+        raise FileNotFoundError(f"Text bank not found: {text_bank_path}")
+    payload = torch.load(text_bank_path, map_location="cpu")
+    if "z_text" not in payload:
+        raise KeyError(f"Text bank missing z_text: {text_bank_path}")
+    z_text = payload["z_text"].float()
+    if z_text.ndim != 2 or z_text.shape[0] == 0:
+        raise ValueError(
+            f"Text bank z_text must have shape (num_classes, dim), got {tuple(z_text.shape)}"
+        )
+    raw_class_ids = payload.get("class_ids")
+    if raw_class_ids is None:
+        class_ids = torch.arange(z_text.shape[0], dtype=torch.long)
+    else:
+        class_ids = torch.as_tensor(raw_class_ids, dtype=torch.long)
+        if class_ids.numel() != z_text.shape[0]:
+            raise ValueError(
+                f"Text bank class_ids length={class_ids.numel()} does not match z_text rows={z_text.shape[0]}"
+            )
+    metadata = payload.get("metadata", {})
+    actual_text_mode = metadata.get("text_mode")
+    if not actual_text_mode and metadata.get("description_variant"):
+        actual_text_mode = text_mode_suffix_from_variant(metadata["description_variant"])
+    if expected_text_mode and actual_text_mode and actual_text_mode != expected_text_mode:
+        raise ValueError(
+            "Text bank text_mode does not match current config. "
+            f"text_bank={text_bank_path} actual={actual_text_mode} expected={expected_text_mode}"
+        )
+    z_text = z_text.to(device)
+    class_ids = class_ids.to(device)
     return z_text, class_ids
+
+
+def resolve_text_bank_path(config: dict[str, Any], section: str | None = None) -> str:
+    if section:
+        section_cfg = config.get(section, {})
+        if isinstance(section_cfg, dict):
+            path = section_cfg.get("text_bank_path")
+            if path:
+                return str(path)
+
+    path = config.get("paths", {}).get("text_bank")
+    if not path:
+        if section:
+            raise ValueError(f"Missing {section}.text_bank_path or paths.text_bank")
+        raise ValueError("Missing paths.text_bank")
+    return str(path)
+
+
+def resolve_mixed_precision(train_cfg: dict[str, Any]) -> str:
+    value = str(train_cfg.get("mixed_precision", "none")).lower()
+    if value not in {"none", "fp16", "bf16"}:
+        raise ValueError(
+            f"train.mixed_precision must be one of none, fp16, bf16; got {value!r}"
+        )
+    return value
 
 
 def select_device(config: dict[str, Any] | None = None) -> torch.device:

@@ -30,9 +30,11 @@ dataset_splits.<split>.model.shift_gcn.pretrained_path
 `paths.text_bank` 默认带模板变量，避免不同文本配置写进同一个缓存：
 
 ```yaml
-paths.text_bank: "{project_root}/data/cache/text_embeddings_ntu{text_num_classes}_zsl_{description_variant}_ktext{k_text}_{text_pooling}.pt"
+paths.text_bank: "{project_root}/data/cache/text_embeddings_ntu{text_num_classes}_zsl{text_mode}.pt"
 ```
 
-可用模板变量：`project_root`、`active_split`、`dataset_name`、`dataset_num_classes`、`split_name`、`text_num_classes`、`description_variant`、`k_text`、`text_pooling`。
+可用模板变量：`project_root`、`active_split`、`dataset_name`、`dataset_num_classes`、`split_name`、`text_num_classes`、`description_variant`、`description_variant_short`、`text_variant`、`text_mode`、`k_text`、`text_pooling`。
+
+`text_mode` 是带下划线的产物后缀：`_full`、`_label`、`_label_local_motion`、`_label_local_motion_object`。
 
 不要改 `seen_classes` / `unseen_classes`，除非你在定义新的 zero-shot split。

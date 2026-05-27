@@ -43,8 +43,16 @@ def select_text_classes(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     if not selected_classes:
         return z_text, class_ids
-    selected = torch.tensor(selected_classes, dtype=class_ids.dtype, device=class_ids.device)
+    ordered_classes = list(dict.fromkeys(int(item) for item in selected_classes))
+    selected = torch.tensor(ordered_classes, dtype=class_ids.dtype, device=class_ids.device)
     mask = (class_ids.view(-1, 1) == selected.view(1, -1)).any(dim=1)
+    present = {int(item) for item in class_ids[mask].detach().cpu().tolist()}
+    missing = [item for item in ordered_classes if item not in present]
+    if missing:
+        raise ValueError(
+            "Text bank does not contain all requested class ids. "
+            f"Missing={missing}; available_rows={int(class_ids.numel())}"
+        )
     return z_text[mask], class_ids[mask]
 
 
