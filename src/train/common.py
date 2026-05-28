@@ -280,6 +280,7 @@ def build_dataloader(
     cache_manager: CacheManager | None,
     logger: Any,
     train: bool,
+    sample_scope: str | list[int] | None = None,
 ) -> DataLoader:
     train_cfg = config["train"] if train else config.get("eval", {})
     dataset_cfg = config["dataset"]
@@ -302,7 +303,11 @@ def build_dataloader(
         if str(dataset_cfg.get("split", "")).lower() == "zsl":
             eval_scope = None
             if not train:
-                eval_scope = config.get("eval", {}).get("sample_scope")
+                eval_scope = (
+                    sample_scope
+                    if sample_scope is not None
+                    else config.get("eval", {}).get("sample_scope")
+                )
             if eval_scope is not None:
                 selected_classes = resolve_class_scope(config, eval_scope)
             elif split_name in {"train", "val"}:

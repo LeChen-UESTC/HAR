@@ -96,6 +96,15 @@ def evaluate_embedding_model(
         pred_indices = logits.argmax(dim=1)
         pred_labels = pred_indices if class_ids is None else class_ids.to(device)[pred_indices]
         labels = batch["label"]
+        if class_ids is not None:
+            candidate_ids = class_ids.to(device).long()
+            label_present = (labels.long().view(-1, 1) == candidate_ids.view(1, -1)).any(dim=1)
+            if not bool(label_present.all()):
+                missing = sorted(set(labels[~label_present].detach().cpu().long().tolist()))
+                raise ValueError(
+                    "Evaluation labels are not present in candidate class_ids. "
+                    f"Missing labels={missing}; candidate_count={int(candidate_ids.numel())}"
+                )
         total += labels.numel()
         matches = pred_labels.long() == labels.long()
         correct += matches.sum().item()

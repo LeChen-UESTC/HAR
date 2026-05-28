@@ -7,7 +7,7 @@ from pathlib import Path
 
 import torch
 
-from src.evaluation.evaluator import evaluate_embedding_model, select_text_classes
+from src.evaluation.evaluator import select_text_classes
 from src.losses.stepwise_infonce import stepwise_infonce
 from src.train.common import (
     build_cache_manager,
@@ -21,6 +21,11 @@ from src.train.common import (
     resolve_mixed_precision,
     resolve_text_bank_path,
     select_device,
+)
+from src.train.eval_during_train import (
+    build_train_eval_loaders,
+    build_train_eval_text_banks,
+    evaluate_zsl_gzsl_during_train,
 )
 from src.train.factory import build_optimizer, build_skeleton_gircse_model, place_skeleton_gircse_model
 from src.utils.checkpoint import (
@@ -47,9 +52,9 @@ def run(ctx: dict, args) -> None:
 
     cache_manager = build_cache_manager(config, logger)
     train_loader = build_dataloader(config, "manifest_train", cache_manager, logger, train=True)
-    val_loader = None
+    train_eval_loaders = None
     if config["train"].get("eval_during_train", False):
-        val_loader = build_dataloader(config, "manifest_val", cache_manager, logger, train=False)
+        train_eval_loaders = build_train_eval_loaders(config, cache_manager, logger)
 
     shift_cfg = config.get("model", {}).get("shift_gcn", {})
     if config["train"].get("freeze_shift_gcn", False) and not shift_cfg.get("pretrained_path"):
@@ -81,14 +86,17 @@ def run(ctx: dict, args) -> None:
     optimizer = build_optimizer(config, model)
     text_bank_path = resolve_text_bank_path(config, "train")
     logger.info("Using text bank: mode=%s path=%s", config.get("_meta", {}).get("text_mode"), text_bank_path)
-    z_text, class_ids = load_text_bank(
+    z_text_all, class_ids_all = load_text_bank(
         text_bank_path,
         device,
         expected_text_mode=config.get("_meta", {}).get("text_mode"),
     )
+    train_eval_text_banks = None
+    if train_eval_loaders is not None:
+        train_eval_text_banks = build_train_eval_text_banks(config, z_text_all, class_ids_all)
     z_text, class_ids = select_text_classes(
-        z_text,
-        class_ids,
+        z_text_all,
+        class_ids_all,
         config.get("dataset", {}).get("seen_classes") or None,
     )
     temperature = float(config["loss"].get("temperature", 0.05))
@@ -159,27 +167,32 @@ def run(ctx: dict, args) -> None:
                 running_logs[key] = running_logs.get(key, 0.0) + float(value) * batch_size
             if step % int(config["train"].get("log_freq", 20)) == 0 and is_main_process():
                 logger.info("epoch=%s step=%s loss=%.6f", epoch, step, float(loss.detach()))
-            if val_loader is not None and eval_steps and global_step % eval_steps == 0:
-                eval_metrics = evaluate_embedding_model(
+            if (
+                train_eval_loaders is not None
+                and train_eval_text_banks is not None
+                and eval_steps
+                and global_step % eval_steps == 0
+            ):
+                eval_metrics = evaluate_zsl_gzsl_during_train(
                     model=model,
-                    dataloader=val_loader,
-                    z_text=z_text,
+                    loaders=train_eval_loaders,
+                    text_banks=train_eval_text_banks,
+                    config=config,
                     device=device,
-                    class_ids=class_ids,
                 )
                 step_metrics = {
                     "epoch": epoch,
                     "global_step": global_step,
-                    "val_top1": eval_metrics["top1"],
-                    "val_num_samples": eval_metrics["num_samples"],
+                    **eval_metrics,
                 }
                 append_jsonl(metrics_path, step_metrics)
                 wandb_log(ctx["wandb_run"], step_metrics, step=global_step)
                 logger.info(
-                    "epoch=%s global_step=%s val_top1=%.4f",
+                    "epoch=%s global_step=%s zsl_top1=%.4f gzsl_H=%.4f",
                     epoch,
                     global_step,
-                    eval_metrics["top1"],
+                    eval_metrics["zsl_top1"],
+                    eval_metrics["gzsl_h_mean"],
                 )
                 model.train()
 
@@ -195,17 +208,21 @@ def run(ctx: dict, args) -> None:
         metrics = {"epoch": epoch, "train_loss": total_loss / max(total, 1)}
         metrics.update({key: value / max(total, 1) for key, value in running_logs.items()})
 
-        if val_loader is not None and epoch % int(config["train"].get("eval_freq", 1)) == 0:
-            eval_metrics = evaluate_embedding_model(
+        if (
+            train_eval_loaders is not None
+            and train_eval_text_banks is not None
+            and epoch % int(config["train"].get("eval_freq", 1)) == 0
+        ):
+            eval_metrics = evaluate_zsl_gzsl_during_train(
                 model=model,
-                dataloader=val_loader,
-                z_text=z_text,
+                loaders=train_eval_loaders,
+                text_banks=train_eval_text_banks,
+                config=config,
                 device=device,
-                class_ids=class_ids,
             )
-            metrics["val_top1"] = eval_metrics["top1"]
-            if eval_metrics["top1"] > best_top1:
-                best_top1 = eval_metrics["top1"]
+            metrics.update(eval_metrics)
+            if eval_metrics["zsl_top1"] > best_top1:
+                best_top1 = eval_metrics["zsl_top1"]
                 save_checkpoint(
                     Path(dirs["model_dir"]) / "best.ckpt",
                     model,
