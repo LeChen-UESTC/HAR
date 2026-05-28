@@ -1,5 +1,8 @@
 base_config: har_experiment.yaml
 
+runtime:
+  cuda_visible_devices: "3"
+
 experiment:
   variant_name: full_linear
   tags: ["skeleton-gircse", "full_linear"]
@@ -10,3 +13,9 @@ text_branch:
 model:
   projector:
     type: linear
+
+train_presets:
+  skeleton_gircse:
+    train:
+      batch_size: 4
+      gradient_accumulation_steps: 8
