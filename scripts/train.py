@@ -4,6 +4,7 @@ from __future__ import annotations
 import _bootstrap  # noqa: F401
 
 import copy
+import gc
 
 import train_prealign
 import train_skeleton_gircse
@@ -55,6 +56,16 @@ def _run_once(args) -> None:
     finalize_run(ctx)
 
 
+def _cleanup_after_run() -> None:
+    gc.collect()
+    try:
+        import torch
+    except ImportError:
+        return
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
 def main() -> None:
     args = parse_common_args("Unified HAR training entrypoint.")
     preview = materialize_run_config(args, run_kind="train")
@@ -63,6 +74,7 @@ def main() -> None:
     if k_values and stage in {"skeleton_gircse", "gircse", "stage2"}:
         for k in k_values:
             _run_once(_args_for_k(args, k))
+            _cleanup_after_run()
         return
     _run_once(args)
 
