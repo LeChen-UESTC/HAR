@@ -10,7 +10,7 @@ from src.train.common import apply_runtime_environment, materialize_run_config, 
 
 
 def main() -> None:
-    args = parse_common_args("Generate rich action descriptions with Qwen2.5.")
+    args = parse_common_args("Generate structured action descriptions with Qwen2.5.")
     config = materialize_run_config(args, run_kind="text_description")
     apply_runtime_environment(config)
     gen_cfg = config["text_branch"].get("generation", {})

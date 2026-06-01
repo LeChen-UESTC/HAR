@@ -6,10 +6,16 @@ import _bootstrap  # noqa: F401
 import copy
 import gc
 
+import train_embedding_baseline
 import train_prealign
 import train_skeleton_gircse
 
-from src.train.common import finalize_run, initialize_run_for_kind, materialize_run_config, parse_common_args
+from src.train.common import (
+    finalize_run,
+    initialize_run_for_kind,
+    materialize_run_config,
+    parse_common_args,
+)
 
 
 def _k_train_values(config: dict) -> list[int]:
@@ -43,12 +49,22 @@ def _run_once(args) -> None:
     try:
         if stage in {"prealign", "warmup"}:
             train_prealign.run(ctx, args)
+        elif stage in {
+            "direct_qformer_baseline",
+            "direct_qformer",
+            "direct",
+            "anchor_hidden_baseline",
+            "anchor_hidden",
+            "anchor",
+        }:
+            train_embedding_baseline.run(ctx, args)
         elif stage in {"skeleton_gircse", "gircse", "stage2"}:
             train_skeleton_gircse.run(ctx, args)
         else:
             raise ValueError(
                 "Unsupported train.stage="
-                f"{stage!r}. Expected prealign or skeleton_gircse."
+                f"{stage!r}. Expected prealign, skeleton_gircse, "
+                "direct_qformer_baseline, or anchor_hidden_baseline."
             )
     except Exception as exc:
         finalize_run(ctx, status="failed", extra={"error": repr(exc)})

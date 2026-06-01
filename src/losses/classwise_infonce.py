@@ -38,3 +38,42 @@ def classwise_infonce(
     if return_per_sample:
         return loss, losses
     return loss
+
+
+def classwise_multibank_infonce(
+    z: torch.Tensor,
+    text_banks: dict[str, torch.Tensor],
+    labels: torch.Tensor,
+    temperature: float = 0.05,
+    class_ids: torch.Tensor | None = None,
+    bank_weights: dict[str, float] | None = None,
+) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    if "main" not in text_banks:
+        raise ValueError("text_banks must contain a main bank")
+    weights = bank_weights or {}
+    total, _main_per_sample = classwise_infonce(
+        z=z,
+        z_text=text_banks["main"],
+        labels=labels,
+        temperature=temperature,
+        class_ids=class_ids,
+        return_per_sample=True,
+    )
+    logs = {"loss_main": total.detach()}
+    for name in ("motion", "phase"):
+        weight = float(weights.get(name, 0.0))
+        if weight <= 0.0:
+            continue
+        if name not in text_banks:
+            raise ValueError(f"Missing auxiliary text bank: {name}")
+        loss = classwise_infonce(
+            z=z,
+            z_text=text_banks[name],
+            labels=labels,
+            temperature=temperature,
+            class_ids=class_ids,
+        )
+        total = total + weight * loss
+        logs[f"loss_{name}"] = loss.detach()
+    logs["loss_total"] = total.detach()
+    return total, logs

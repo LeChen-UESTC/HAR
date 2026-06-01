@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 import torch
 from torch.utils.data import DataLoader
@@ -151,6 +152,7 @@ def is_materialization_override(item: str) -> bool:
             "text_branch.description_variant",
             "text_branch.generation.num_classes",
             "text_branch.embedding.k_text",
+            "text_branch.embedding.main_label_alpha",
             "text_branch.embedding.pooling",
         }
         or is_preset_definition_key(key)
@@ -367,6 +369,7 @@ def load_text_bank(
     path: str | Path,
     device: torch.device,
     expected_text_mode: str | None = None,
+    expected_metadata: Mapping[str, Any] | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     text_bank_path = Path(path)
     if not text_bank_path.exists():
@@ -397,9 +400,139 @@ def load_text_bank(
             "Text bank text_mode does not match current config. "
             f"text_bank={text_bank_path} actual={actual_text_mode} expected={expected_text_mode}"
         )
+    validate_text_bank_metadata(metadata, expected_metadata, text_bank_path)
     z_text = z_text.to(device)
     class_ids = class_ids.to(device)
     return z_text, class_ids
+
+
+def load_text_bank_bundle(
+    path: str | Path,
+    device: torch.device,
+    expected_text_mode: str | None = None,
+    expected_metadata: Mapping[str, Any] | None = None,
+) -> tuple[dict[str, torch.Tensor], torch.Tensor]:
+    text_bank_path = Path(path)
+    if not text_bank_path.exists():
+        raise FileNotFoundError(f"Text bank not found: {text_bank_path}")
+    payload = torch.load(text_bank_path, map_location="cpu")
+    metadata = payload.get("metadata", {})
+    actual_text_mode = metadata.get("text_mode")
+    if not actual_text_mode and metadata.get("description_variant"):
+        actual_text_mode = text_mode_suffix_from_variant(metadata["description_variant"])
+    if expected_text_mode and actual_text_mode and actual_text_mode != expected_text_mode:
+        raise ValueError(
+            "Text bank text_mode does not match current config. "
+            f"text_bank={text_bank_path} actual={actual_text_mode} expected={expected_text_mode}"
+        )
+    validate_text_bank_metadata(metadata, expected_metadata, text_bank_path)
+
+    banks = {
+        "main": _load_named_text_bank(payload, "z_text_main", fallback_key="z_text"),
+        "label": _load_named_text_bank(payload, "z_text_label"),
+        "motion": _load_named_text_bank(payload, "z_text_motion"),
+        "phase": _load_named_text_bank(payload, "z_text_phase"),
+    }
+    row_count = next(iter(banks.values())).shape[0]
+    for name, tensor in banks.items():
+        if tensor.ndim != 2 or tensor.shape[0] == 0:
+            raise ValueError(f"Text bank {name} must have shape (num_classes, dim), got {tuple(tensor.shape)}")
+        if tensor.shape[0] != row_count:
+            raise ValueError(f"Text bank {name} rows={tensor.shape[0]} do not match main rows={row_count}")
+    raw_class_ids = payload.get("class_ids")
+    if raw_class_ids is None:
+        class_ids = torch.arange(row_count, dtype=torch.long)
+    else:
+        class_ids = torch.as_tensor(raw_class_ids, dtype=torch.long)
+        if class_ids.numel() != row_count:
+            raise ValueError(
+                f"Text bank class_ids length={class_ids.numel()} does not match rows={row_count}"
+            )
+    return {name: tensor.float().to(device) for name, tensor in banks.items()}, class_ids.to(device)
+
+
+def _load_named_text_bank(payload: dict[str, Any], key: str, fallback_key: str | None = None) -> torch.Tensor:
+    if key in payload:
+        return payload[key].float()
+    if fallback_key and fallback_key in payload:
+        return payload[fallback_key].float()
+    raise KeyError(f"Text bank missing {key}")
+
+
+def expected_text_bank_metadata(config: Mapping[str, Any]) -> dict[str, Any]:
+    text_cfg = config.get("text_branch", {}) if isinstance(config, Mapping) else {}
+    embedding_cfg = text_cfg.get("embedding", {}) if isinstance(text_cfg, Mapping) else {}
+    paths = config.get("paths", {}) if isinstance(config, Mapping) else {}
+    return {
+        "base_model_path": str(paths.get("gircse_base_model", paths.get("qwen_instruct_model", ""))),
+        "adapter_path": _optional_str(paths.get("gircse_adapter", paths.get("gircse_model"))),
+        "prompt_template": str(embedding_cfg.get("prompt", "")),
+        "k_text": int(embedding_cfg.get("k_text", 20)),
+        "normalize": bool(embedding_cfg.get("normalize", True)),
+        "logit_temperature": float(embedding_cfg.get("logit_temperature", 1.0)),
+        "pooling_method": str(embedding_cfg.get("pooling", "generate_mean")),
+        "main_label_alpha": float(embedding_cfg.get("main_label_alpha", 0.7)),
+    }
+
+
+def validate_text_bank_metadata(
+    metadata: Mapping[str, Any],
+    expected: Mapping[str, Any] | None,
+    path: str | Path,
+) -> None:
+    if not expected:
+        return
+    checks = {
+        "base_model_path": str(metadata.get("base_model_path", "")),
+        "adapter_path": _optional_str(metadata.get("adapter_path")),
+        "prompt_template": str(metadata.get("prompt_template", "")),
+        "k_text": int(metadata.get("k_text", -1)),
+        "normalize": bool(metadata.get("normalize", False)),
+        "logit_temperature": _float_or_none(metadata.get("logit_temperature")),
+        "pooling_method": str(metadata.get("pooling_method", "")),
+        "main_label_alpha": _float_or_none(_metadata_main_label_alpha(metadata)),
+    }
+    mismatches = []
+    for key, expected_value in expected.items():
+        actual_value = checks.get(key)
+        if isinstance(expected_value, float):
+            if actual_value is None or not math.isfinite(float(actual_value)):
+                mismatches.append((key, actual_value, expected_value))
+            elif abs(float(actual_value) - expected_value) > 1e-8:
+                mismatches.append((key, actual_value, expected_value))
+        elif actual_value != expected_value:
+            mismatches.append((key, actual_value, expected_value))
+    if mismatches:
+        details = "; ".join(
+            f"{key}: actual={actual!r} expected={expected_value!r}"
+            for key, actual, expected_value in mismatches
+        )
+        raise ValueError(
+            "Text bank metadata does not match current config. "
+            f"text_bank={path}; {details}. Regenerate the text bank or point text_bank_path to the matching file."
+        )
+
+
+def _optional_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    return str(value)
+
+
+def _float_or_none(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _metadata_main_label_alpha(metadata: Mapping[str, Any]) -> Any:
+    main_fusion = metadata.get("main_fusion")
+    if not isinstance(main_fusion, Mapping):
+        return None
+    return main_fusion.get("label_alpha")
 
 
 def resolve_text_bank_path(config: dict[str, Any], section: str | None = None) -> str:

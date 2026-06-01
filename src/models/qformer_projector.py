@@ -14,7 +14,16 @@ DEFAULT_PART_AWARE_QUERY_ROLES = (
     "torso",
     "left_leg",
     "right_leg",
+    "start",
+    "middle",
+    "end",
     "global",
+    "free_1",
+    "free_2",
+    "free_3",
+    "free_4",
+    "free_5",
+    "free_6",
 )
 
 
@@ -23,7 +32,7 @@ class QFormerProjectorConfig:
     projector_type: str
     in_dim: int
     llm_dim: int
-    num_query_tokens: int = 7
+    num_query_tokens: int = 16
     query_roles: tuple[str, ...] = DEFAULT_PART_AWARE_QUERY_ROLES
     qformer_hidden_dim: int = 768
     qformer_num_layers: int = 6
@@ -167,7 +176,7 @@ class SkeletonQFormerProjector(nn.Module):
 
 def qformer_config_from_dict(projector_cfg: dict[str, Any]) -> QFormerProjectorConfig:
     projector_type = str(projector_cfg.get("type", "qformer"))
-    num_query_tokens = int(projector_cfg.get("num_query_tokens", 7))
+    num_query_tokens = int(projector_cfg.get("num_query_tokens", 16))
     query_roles = tuple(projector_cfg.get("query_roles") or [])
     if not query_roles:
         if projector_type == "part_aware_qformer":

@@ -30,7 +30,7 @@ class SoftTokenGenerator(nn.Module):
     def forward(self, input_embeds: torch.Tensor, attention_mask: torch.Tensor | None = None) -> tuple[list[torch.Tensor], torch.Tensor]:
         """
         Args:
-            input_embeds: [B, N_prompt + N_skel, d_llm]
+            input_embeds: [B, N_skel + N_prompt, d_llm]
 
         Returns:
             z_steps: z_steps[k-1] = Z_skel^(k), each [B, d_llm]

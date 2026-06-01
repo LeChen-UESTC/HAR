@@ -5,21 +5,27 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from .description_templates import generation_prompt, normalize_description_record
+from .description_templates import (
+    PHASE_KEYS,
+    generation_prompt,
+    heuristic_description as fallback_description,
+    normalize_description_record,
+)
 
 
 REQUIRED_DESCRIPTION_FIELDS = (
     "label",
-    "local_motion",
-    "used_object",
-    "target_object",
-    "environment",
+    "observable_motion",
+    "key_body_parts",
+    "temporal_phases",
 )
+ALLOWED_DESCRIPTION_FIELDS = set(REQUIRED_DESCRIPTION_FIELDS)
 INVALID_FIELD_VALUES = {
     "",
     "unknown",
     "n/a",
     "na",
+    "none",
     "none specified",
     "not specified",
     "not applicable",
@@ -106,23 +112,23 @@ def generate_descriptions(
     dry_run: bool = False,
     runtime: dict[str, Any] | None = None,
     max_retries: int = 3,
-) -> dict[str, dict[str, str]]:
+) -> dict[str, dict[str, Any]]:
     logger = logging.getLogger(__name__)
     output_path = Path(output_path)
     logger.info(
-        "Generating rich descriptions: classes=%s model=%s output=%s",
+        "Generating structured descriptions: classes=%s model=%s output=%s",
         len(class_names),
         model_path,
         output_path,
     )
-    output: dict[str, dict[str, str]] = {}
+    output: dict[str, dict[str, Any]] = {}
 
     if dry_run:
         for label in _progress(class_names, desc="Generating descriptions"):
             output[label] = normalize_description_record(label)
             save_descriptions(output, output_path)
         save_descriptions(output, output_path)
-        logger.info("Saved rich descriptions to %s", output_path)
+        logger.info("Saved structured descriptions to %s", output_path)
         return output
 
     import torch
@@ -165,7 +171,7 @@ def generate_descriptions(
         save_descriptions(output, output_path)
 
     save_descriptions(output, output_path)
-    logger.info("Saved rich descriptions to %s", output_path)
+    logger.info("Saved structured descriptions to %s", output_path)
     return output
 
 
@@ -179,7 +185,7 @@ def generate_one_description(
     max_retries: int,
     failure_path: Path,
     logger: logging.Logger,
-) -> dict[str, str]:
+) -> dict[str, Any]:
     import torch
 
     feedback = None
@@ -202,10 +208,8 @@ def generate_one_description(
         )
         try:
             record = parse_json_object(decoded)
-            record["label"] = label
-            normalized = normalize_description_record(record)
-            validate_description_record(normalized, label)
-            return normalized
+            validate_description_record(record, label)
+            return normalize_description_record(record)
         except Exception as exc:
             feedback = str(exc)
             append_generation_failure(
@@ -242,19 +246,42 @@ def tokenize_generation_prompt(tokenizer: Any, prompt: str, model: Any) -> dict[
     return tokenizer(prompt, return_tensors="pt").to(model.device)
 
 
-def validate_description_record(record: dict[str, str], label: str) -> None:
+def validate_description_record(record: dict[str, Any], label: str) -> None:
     missing = [field for field in REQUIRED_DESCRIPTION_FIELDS if field not in record]
     if missing:
         raise ValueError(f"Missing required fields: {missing}")
-    for field in REQUIRED_DESCRIPTION_FIELDS:
+    extra = sorted(set(record) - ALLOWED_DESCRIPTION_FIELDS)
+    if extra:
+        raise ValueError(f"Unsupported fields in structured description: {extra}")
+    for field in ("label", "observable_motion"):
         value = str(record.get(field, "")).strip()
         normalized = value.lower()
         if normalized in INVALID_FIELD_VALUES:
             raise ValueError(f"Invalid placeholder value for {field}: {value!r}")
     if record["label"].strip().lower() != label.strip().lower():
         raise ValueError(f"Label mismatch: expected {label!r}, got {record['label']!r}")
-    if len(record["local_motion"].split()) < 6:
-        raise ValueError("local_motion is too short to describe skeleton-visible motion")
+    if len(str(record["observable_motion"]).split()) < 6:
+        raise ValueError("observable_motion is too short to describe skeleton-visible motion")
+    key_body_parts = record.get("key_body_parts")
+    if not isinstance(key_body_parts, list) or not key_body_parts:
+        raise ValueError("key_body_parts must be a non-empty list")
+    for index, part in enumerate(key_body_parts):
+        value = str(part).strip()
+        if value.lower() in INVALID_FIELD_VALUES:
+            raise ValueError(f"Invalid key_body_parts[{index}]: {part!r}")
+    temporal_phases = record.get("temporal_phases")
+    if not isinstance(temporal_phases, dict):
+        raise ValueError("temporal_phases must be an object")
+    phase_keys = set(temporal_phases)
+    expected_keys = set(PHASE_KEYS)
+    if phase_keys != expected_keys:
+        raise ValueError(
+            f"temporal_phases keys must be exactly {sorted(expected_keys)}, got {sorted(phase_keys)}"
+        )
+    for key in PHASE_KEYS:
+        value = str(temporal_phases.get(key, "")).strip()
+        if value.lower() in INVALID_FIELD_VALUES:
+            raise ValueError(f"Invalid temporal_phases.{key}: {value!r}")
 
 
 def append_generation_failure(
@@ -275,42 +302,11 @@ def append_generation_failure(
         handle.write(json.dumps(payload, ensure_ascii=True) + "\n")
 
 
-def heuristic_description(label: str) -> dict[str, str]:
-    lower = label.lower()
-    object_rules = [
-        ("brush teeth", "toothbrush", "teeth", "bathroom"),
-        ("drink", "cup or bottle", "drink", "kitchen or dining area"),
-        ("eat", "food or utensil", "meal", "kitchen or dining area"),
-        ("write", "pen", "paper", "office or classroom"),
-        ("typing", "keyboard", "computer", "room or office"),
-        ("phone", "phone", "ear or hand", "indoor or outdoor setting"),
-        ("glasses", "glasses", "face or eyes", "home"),
-        ("hat", "hat", "head", "home"),
-        ("shoe", "shoe", "foot", "home"),
-        ("bag", "bag", "body or shoulder", "home or public area"),
-    ]
-    used_object = "none"
-    target_object = "none"
-    environment = "indoor or everyday setting"
-    for keyword, used, target, env in object_rules:
-        if keyword in lower:
-            used_object = used
-            target_object = target
-            environment = env
-            break
-    return {
-        "label": label,
-        "local_motion": (
-            f"The person performs the action {label} with visible body posture "
-            "changes and coordinated limb movements over time."
-        ),
-        "used_object": used_object,
-        "target_object": target_object,
-        "environment": environment,
-    }
+def heuristic_description(label: str) -> dict[str, Any]:
+    return fallback_description(label)
 
 
-def save_descriptions(descriptions: dict[str, dict[str, str]], output_path: str | Path) -> None:
+def save_descriptions(descriptions: dict[str, dict[str, Any]], output_path: str | Path) -> None:
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:

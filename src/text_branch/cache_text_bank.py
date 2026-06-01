@@ -42,10 +42,11 @@ def cache_text_bank_from_config(config: dict[str, Any]) -> dict[str, Any]:
         adapter_path=paths.get("gircse_adapter", paths.get("gircse_model")),
         prompt_template=embedding_cfg["prompt"],
         output_path=paths["text_bank"],
-        variant=text_cfg.get("description_variant", "full"),
+        variant=text_cfg.get("description_variant", "structured"),
         k_text=int(embedding_cfg.get("k_text", 20)),
         normalize=bool(embedding_cfg.get("normalize", True)),
         logit_temperature=float(embedding_cfg.get("logit_temperature", 1.0)),
         pooling_method=str(embedding_cfg.get("pooling", "generate_mean")),
+        main_label_alpha=float(embedding_cfg.get("main_label_alpha", 0.7)),
         runtime=config.get("runtime", {}),
     )

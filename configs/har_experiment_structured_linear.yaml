@@ -4,11 +4,8 @@ runtime:
   cuda_visible_devices: "3"
 
 experiment:
-  variant_name: full_linear
-  tags: ["skeleton-gircse", "full_linear"]
-
-text_branch:
-  description_variant: full
+  variant_name: structured_linear
+  tags: ["skeleton-gircse", "structured_linear"]
 
 model:
   projector:

@@ -13,7 +13,7 @@ class SkeletonPromptBuilder:
     prompt_text: str
 
     def build(self, batch_size: int, device: torch.device) -> torch.Tensor:
-        encoded = self.tokenizer(self.prompt_text, return_tensors="pt", add_special_tokens=True)
+        encoded = self.tokenizer(self.prompt_text, return_tensors="pt", add_special_tokens=False)
         embedding_device = self.token_embedding.weight.device
         input_ids = encoded["input_ids"].to(embedding_device)
         embeds = self.token_embedding(input_ids)

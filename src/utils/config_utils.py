@@ -11,10 +11,7 @@ from typing import Any, Mapping
 
 
 DESCRIPTION_VARIANT_SHORT_NAMES = {
-    "label_only": "label",
-    "label_local_motion": "label_local_motion",
-    "label_local_motion_object": "label_local_motion_object",
-    "full": "full",
+    "structured": "structured",
 }
 
 PROJECTOR_TYPE_NAMES = {
@@ -213,6 +210,7 @@ def _template_replacements(config: Mapping[str, Any], project_root: Path) -> dic
         "description_variant": description_variant,
         "description_variant_short": text_variant,
         "k_text": get_nested(config, ["text_branch", "embedding", "k_text"], ""),
+        "main_label_alpha": get_nested(config, ["text_branch", "embedding", "main_label_alpha"], ""),
         "projector_mode": projector_mode,
         "projector_type": projector_type,
         "text_mode": text_mode,
@@ -433,7 +431,9 @@ def build_compact_experiment_name(config: Mapping[str, Any]) -> str:
     if stage in {"prealign", "warmup"}:
         return sanitize_name(f"train_{stage}_{dataset_label}_BS{batch_size}_EP{epochs}{run_identity_suffix(config)}")
     k_train = _display_k_for_stage(config, stage)
-    return sanitize_name(f"train_{stage}_{dataset_label}_BS{batch_size}_EP{epochs}_K{k_train}{run_identity_suffix(config)}")
+    return sanitize_name(
+        f"train_{stage}_{dataset_label}_BS{batch_size}_EP{epochs}_K{k_train}{run_identity_suffix(config)}"
+    )
 
 
 def _display_k_for_stage(config: Mapping[str, Any], stage: str) -> str:
@@ -450,7 +450,16 @@ def _display_k_for_stage(config: Mapping[str, Any], stage: str) -> str:
                 ),
             )
         )
-    if normalized in {"prealign", "warmup"}:
+    if normalized in {
+        "prealign",
+        "warmup",
+        "direct_qformer_baseline",
+        "direct_qformer",
+        "direct",
+        "anchor_hidden_baseline",
+        "anchor_hidden",
+        "anchor",
+    }:
         return "none"
     return _display_k_value(get_nested(config, ["model", "soft_tokens", "k_train"], "k"))
 

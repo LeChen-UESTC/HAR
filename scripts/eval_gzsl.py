@@ -14,6 +14,7 @@ from src.evaluation.evaluator import (
 from src.train.common import (
     build_cache_manager,
     build_dataloader,
+    expected_text_bank_metadata,
     finalize_run,
     initialize_run_for_kind,
     load_text_bank,
@@ -21,7 +22,11 @@ from src.train.common import (
     resolve_text_bank_path,
     select_device,
 )
-from src.train.factory import build_skeleton_gircse_model, place_skeleton_gircse_model
+from src.train.factory import (
+    build_embedding_model_for_stage,
+    checkpoint_include_prefixes,
+    place_skeleton_gircse_model,
+)
 from src.utils.checkpoint import load_checkpoint
 
 
@@ -35,9 +40,9 @@ def run(ctx: dict, args) -> None:
     eval_cfg = config.get("eval", {})
     split_key = str(eval_cfg.get("split_key", "manifest_test"))
     test_loader = build_dataloader(config, split_key, cache_manager, logger, train=False)
-    model = place_skeleton_gircse_model(build_skeleton_gircse_model(config), config, device)
+    model = place_skeleton_gircse_model(build_embedding_model_for_stage(config), config, device)
     eval_k = eval_cfg.get("k")
-    if eval_k is not None:
+    if eval_k is not None and hasattr(model, "soft_token_generator"):
         eval_k = int(eval_k)
         if eval_k < 1:
             raise ValueError(f"eval.k must be >= 1, got {eval_k}")
@@ -49,7 +54,7 @@ def run(ctx: dict, args) -> None:
             model,
             map_location="cpu",
             strict=False,
-            include_prefixes=("shift_gcn.", "token_projector."),
+            include_prefixes=checkpoint_include_prefixes(config),
             expected_projector_type=config.get("_meta", {}).get("projector_type"),
             expected_text_mode=config.get("_meta", {}).get("text_mode"),
         )
@@ -61,6 +66,7 @@ def run(ctx: dict, args) -> None:
         text_bank_path,
         device,
         expected_text_mode=config.get("_meta", {}).get("text_mode"),
+        expected_metadata=expected_text_bank_metadata(config),
     )
     candidate_classes = resolve_class_scope(config, eval_cfg.get("candidate_scope", "all"))
     z_text, class_ids = select_text_classes(z_text, class_ids, candidate_classes or None)

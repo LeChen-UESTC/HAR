@@ -42,13 +42,13 @@
   <!-- Text branch -->
   <rect x="95" y="178" width="210" height="120" class="text-panel"/>
   <text x="200" y="216" text-anchor="middle" class="label">Action classes</text>
-  <text x="200" y="250" text-anchor="middle" class="small">label or rich</text>
-  <text x="200" y="274" text-anchor="middle" class="small">description</text>
+  <text x="200" y="250" text-anchor="middle" class="small">structured</text>
+  <text x="200" y="274" text-anchor="middle" class="small">descriptions</text>
 
   <rect x="360" y="178" width="265" height="120" class="text-panel"/>
   <text x="492" y="214" text-anchor="middle" class="label">Text prompt</text>
-  <text x="492" y="248" text-anchor="middle" class="small">instruction + query</text>
-  <text x="492" y="272" text-anchor="middle" class="tiny">description variant: label / full</text>
+  <text x="492" y="248" text-anchor="middle" class="small">instruction + text</text>
+  <text x="492" y="272" text-anchor="middle" class="tiny">label / motion / phase views</text>
 
   <rect x="680" y="178" width="285" height="120" class="model-panel"/>
   <text x="822" y="214" text-anchor="middle" class="label">GIRCSE text encoder</text>
@@ -62,8 +62,8 @@
 
   <rect x="1320" y="178" width="175" height="120" class="text-panel"/>
   <text x="1408" y="214" text-anchor="middle" class="label">Text bank</text>
-  <text x="1408" y="248" text-anchor="middle" class="small">one vector</text>
-  <text x="1408" y="272" text-anchor="middle" class="small">per class</text>
+  <text x="1408" y="248" text-anchor="middle" class="small">Zmain / Zlabel</text>
+  <text x="1408" y="272" text-anchor="middle" class="small">Zmotion / Zphase</text>
 
   <path d="M305 238 L360 238" class="arrow"/>
   <path d="M625 238 L680 238" class="arrow"/>
@@ -84,14 +84,14 @@
   <rect x="640" y="500" width="305" height="175" class="model-panel"/>
   <text x="792" y="538" text-anchor="middle" class="label">Part-aware Q-Former</text>
   <text x="792" y="573" text-anchor="middle" class="small">joint-role embedding</text>
-  <text x="792" y="598" text-anchor="middle" class="tiny">head / torso / arms / legs</text>
+  <text x="792" y="598" text-anchor="middle" class="tiny">6 part + 3 phase + global + free</text>
   <line x1="682" y1="620" x2="902" y2="620" class="thin"/>
-  <text x="792" y="649" text-anchor="middle" class="small">7 query tokens to LLM dim</text>
+  <text x="792" y="649" text-anchor="middle" class="small">16 query tokens to LLM dim</text>
 
   <rect x="1000" y="525" width="245" height="125" class="model-panel"/>
   <text x="1122" y="563" text-anchor="middle" class="label">GIRCSE generator</text>
-  <text x="1122" y="599" text-anchor="middle" class="small">conditioned on prompt</text>
-  <text x="1122" y="624" text-anchor="middle" class="small">+ skeleton tokens</text>
+  <text x="1122" y="599" text-anchor="middle" class="small">input order</text>
+  <text x="1122" y="624" text-anchor="middle" class="small">Tskel + prompt</text>
 
   <rect x="1300" y="500" width="195" height="175" class="model-panel"/>
   <text x="1398" y="538" text-anchor="middle" class="label">K soft tokens</text>

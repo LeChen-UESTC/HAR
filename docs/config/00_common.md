@@ -30,12 +30,12 @@ dataset_splits.<split>.model.shift_gcn.pretrained_path
 `paths.text_bank` 默认带模板变量，避免不同文本配置写进同一个缓存：
 
 ```yaml
-paths.text_bank: "{project_root}/data/cache/text_embeddings_ntu{text_num_classes}_zsl{text_mode}.pt"
+paths.text_bank: "{project_root}/data/cache/text_embeddings_ntu{text_num_classes}_zsl{text_mode}_k{k_text}_{text_pooling}_a{main_label_alpha}.pt"
 ```
 
-可用模板变量：`project_root`、`active_split`、`dataset_name`、`dataset_num_classes`、`split_name`、`text_num_classes`、`description_variant`、`description_variant_short`、`text_variant`、`text_mode`、`projector_type`、`projector_mode`、`k_text`、`text_pooling`。
+可用模板变量：`project_root`、`active_split`、`dataset_name`、`dataset_num_classes`、`split_name`、`text_num_classes`、`description_variant`、`description_variant_short`、`text_variant`、`text_mode`、`projector_type`、`projector_mode`、`k_text`、`text_pooling`、`main_label_alpha`。
 
-`text_mode` 是带下划线的产物后缀：`_full`、`_label`、`_label_local_motion`、`_label_local_motion_object`。
+`text_mode` 目前只有 `_structured`。`main_label_alpha` 是主文本原型 `Zmain = Norm(alpha * Zlabel + (1 - alpha) * Zmotion)` 中 label bank 的权重。
 训练/评估输出目录还会带 `projector_mode` 后缀：`_linear`、`_linear_layernorm`、`_qformer`、`_general_qformer`、`_part_aware_qformer`。
 
 不要改 `seen_classes` / `unseen_classes`，除非你在定义新的 zero-shot split。

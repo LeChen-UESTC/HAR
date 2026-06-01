@@ -9,7 +9,11 @@ from src.models.encoder import build_shift_gcn_from_config
 from src.models.gircse_loader import load_gircse_model_and_tokenizer
 from src.models.projection import TokenProjector
 from src.models.qformer_projector import SkeletonQFormerProjector, qformer_config_from_dict
-from src.models.skeleton_gircse import SkeletonGIRCSE
+from src.models.skeleton_gircse import (
+    AnchorHiddenStateEmbedding,
+    DirectQFormerEmbedding,
+    SkeletonGIRCSE,
+)
 from src.models.skeleton_prompt_builder import SkeletonPromptBuilder
 from src.models.soft_token_generator import SoftTokenGenerator
 from src.utils.torch_utils import hf_model_kwargs
@@ -112,11 +116,81 @@ def build_skeleton_gircse_model(config: dict[str, Any]) -> SkeletonGIRCSE:
     )
 
 
+def build_direct_qformer_baseline(config: dict[str, Any]) -> DirectQFormerEmbedding:
+    shift_gcn = build_shift_gcn_from_config(config)
+    if config.get("train", {}).get("freeze_shift_gcn", False):
+        for param in shift_gcn.parameters():
+            param.requires_grad = False
+    projector = build_projector(config)
+    return DirectQFormerEmbedding(
+        shift_gcn=shift_gcn,
+        token_projector=projector,
+        hidden_dim=int(config["model"]["projector"]["llm_dim"]),
+    )
+
+
+def build_anchor_hidden_baseline(config: dict[str, Any]) -> AnchorHiddenStateEmbedding:
+    shift_gcn = build_shift_gcn_from_config(config)
+    if config.get("train", {}).get("freeze_shift_gcn", False):
+        for param in shift_gcn.parameters():
+            param.requires_grad = False
+    projector = build_projector(config)
+    llm, tokenizer = _load_training_llm(config)
+    prompt_builder = SkeletonPromptBuilder(
+        tokenizer=tokenizer,
+        token_embedding=llm.get_input_embeddings(),
+        prompt_text=config["model"]["prompt"]["text"],
+    )
+    return AnchorHiddenStateEmbedding(
+        shift_gcn=shift_gcn,
+        token_projector=projector,
+        llm=llm,
+        prompt_builder=prompt_builder,
+    )
+
+
+def build_embedding_model_for_stage(config: dict[str, Any]) -> nn.Module:
+    stage = str(config.get("train", {}).get("stage", "skeleton_gircse")).lower()
+    if stage in {"direct_qformer_baseline", "direct_qformer", "direct"}:
+        return build_direct_qformer_baseline(config)
+    if stage in {"anchor_hidden_baseline", "anchor_hidden", "anchor"}:
+        return build_anchor_hidden_baseline(config)
+    return build_skeleton_gircse_model(config)
+
+
+def _load_training_llm(config: dict[str, Any]) -> tuple[Any, Any]:
+    paths = config["paths"]
+    llm, tokenizer = load_gircse_model_and_tokenizer(
+        base_model_path=paths.get("gircse_base_model", paths["qwen_instruct_model"]),
+        adapter_path=paths.get("gircse_adapter", paths.get("gircse_model")),
+        model_kwargs=hf_model_kwargs(config, for_text=False),
+        trust_remote_code=bool(config.get("runtime", {}).get("trust_remote_code", True)),
+    )
+    if config.get("train", {}).get("freeze_llm", True):
+        for param in llm.parameters():
+            param.requires_grad = False
+    if config.get("train", {}).get("freeze_lm_head", True) and hasattr(llm, "lm_head"):
+        for param in llm.lm_head.parameters():
+            param.requires_grad = False
+    if config.get("train", {}).get("gradient_checkpointing", False):
+        if hasattr(llm, "gradient_checkpointing_enable"):
+            llm.gradient_checkpointing_enable()
+        if hasattr(llm, "config"):
+            llm.config.use_cache = False
+    expected_dim = int(config["model"]["projector"]["llm_dim"])
+    actual_dim = int(llm.config.hidden_size)
+    if expected_dim != actual_dim:
+        raise ValueError(
+            f"Projector llm_dim={expected_dim} does not match GIRCSE hidden_size={actual_dim}"
+        )
+    return llm, tokenizer
+
+
 def place_skeleton_gircse_model(
-    model: SkeletonGIRCSE,
+    model: nn.Module,
     config: dict[str, Any],
     device: torch.device,
-) -> SkeletonGIRCSE:
+) -> nn.Module:
     if config.get("runtime", {}).get("device_map_train") is not None:
         model.shift_gcn.to(device)
         model.token_projector.to(device)
@@ -200,3 +274,10 @@ def build_optimizer(config: dict[str, Any], model: nn.Module) -> torch.optim.Opt
         param_groups,
         weight_decay=float(train_cfg.get("weight_decay", 0.01)),
     )
+
+
+def checkpoint_include_prefixes(config: dict[str, Any]) -> tuple[str, ...]:
+    stage = str(config.get("train", {}).get("stage", "")).lower()
+    if stage in {"direct_qformer_baseline", "direct_qformer", "direct"}:
+        return ("shift_gcn.", "token_projector.", "embedding_head.")
+    return ("shift_gcn.", "token_projector.")

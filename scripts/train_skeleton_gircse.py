@@ -8,13 +8,14 @@ from pathlib import Path
 import torch
 
 from src.evaluation.evaluator import select_text_classes
-from src.losses.stepwise_infonce import stepwise_infonce
+from src.losses.stepwise_infonce import stepwise_multibank_infonce
 from src.train.common import (
     build_cache_manager,
     build_dataloader,
     finalize_run,
+    expected_text_bank_metadata,
     initialize_run_for_kind,
-    load_text_bank,
+    load_text_bank_bundle,
     maybe_autocast,
     move_batch_to_device,
     parse_common_args,
@@ -27,7 +28,12 @@ from src.train.eval_during_train import (
     build_train_eval_text_banks,
     evaluate_zsl_gzsl_during_train,
 )
-from src.train.factory import build_optimizer, build_skeleton_gircse_model, place_skeleton_gircse_model
+from src.train.factory import (
+    build_optimizer,
+    build_skeleton_gircse_model,
+    checkpoint_include_prefixes,
+    place_skeleton_gircse_model,
+)
 from src.utils.checkpoint import (
     load_checkpoint,
     save_checkpoint,
@@ -78,7 +84,7 @@ def run(ctx: dict, args) -> None:
             model,
             map_location="cpu",
             strict=False,
-            include_prefixes=("shift_gcn.", "token_projector."),
+            include_prefixes=checkpoint_include_prefixes(config),
             expected_projector_type=config.get("_meta", {}).get("projector_type"),
             expected_text_mode=config.get("_meta", {}).get("text_mode"),
         )
@@ -86,21 +92,27 @@ def run(ctx: dict, args) -> None:
     optimizer = build_optimizer(config, model)
     text_bank_path = resolve_text_bank_path(config, "train")
     logger.info("Using text bank: mode=%s path=%s", config.get("_meta", {}).get("text_mode"), text_bank_path)
-    z_text_all, class_ids_all = load_text_bank(
+    text_banks_all, class_ids_all = load_text_bank_bundle(
         text_bank_path,
         device,
         expected_text_mode=config.get("_meta", {}).get("text_mode"),
+        expected_metadata=expected_text_bank_metadata(config),
     )
+    z_text_all = text_banks_all["main"]
     train_eval_text_banks = None
     if train_eval_loaders is not None:
         train_eval_text_banks = build_train_eval_text_banks(config, z_text_all, class_ids_all)
-    z_text, class_ids = select_text_classes(
-        z_text_all,
-        class_ids_all,
-        config.get("dataset", {}).get("seen_classes") or None,
-    )
+    seen_classes = config.get("dataset", {}).get("seen_classes") or None
+    z_text, class_ids = select_text_classes(z_text_all, class_ids_all, seen_classes)
+    text_banks = {"main": z_text}
+    for bank_name in ("motion", "phase"):
+        text_banks[bank_name], _ = select_text_classes(text_banks_all[bank_name], class_ids_all, seen_classes)
     temperature = float(config["loss"].get("temperature", 0.05))
-    lambda_irr = float(config["loss"].get("lambda_irr", 1.0))
+    lambda_irr = float(config["loss"].get("lambda_irr", 0.1))
+    bank_weights = {
+        "motion": float(config["loss"].get("lambda_motion", 0.0)),
+        "phase": float(config["loss"].get("lambda_phase", 0.0)),
+    }
     mixed_precision = resolve_mixed_precision(config["train"])
     use_amp = mixed_precision in {"fp16", "bf16"}
     scaler = torch.cuda.amp.GradScaler(enabled=use_amp and torch.cuda.is_available())
@@ -137,13 +149,14 @@ def run(ctx: dict, args) -> None:
             valid_step += 1
             with maybe_autocast(use_amp, mixed_precision):
                 z_steps, _z_final = model(batch["skeleton"])
-                loss, logs = stepwise_infonce(
+                loss, logs = stepwise_multibank_infonce(
                     z_steps=z_steps,
-                    z_text=z_text,
+                    text_banks=text_banks,
                     labels=batch["label"],
                     temperature=temperature,
                     lambda_irr=lambda_irr,
                     class_ids=class_ids,
+                    bank_weights=bank_weights,
                 )
                 loss_for_backward = loss / grad_accum_steps
             scaler.scale(loss_for_backward).backward()
@@ -230,7 +243,7 @@ def run(ctx: dict, args) -> None:
                     epoch=epoch,
                     metrics=metrics,
                     extra=checkpoint_extra,
-                    include_prefixes=("shift_gcn.", "token_projector."),
+                    include_prefixes=checkpoint_include_prefixes(config),
                     trainable_only=True,
                 )
 
@@ -247,7 +260,7 @@ def run(ctx: dict, args) -> None:
                 epoch=epoch,
                 metrics=metrics,
                 extra=checkpoint_extra,
-                include_prefixes=("shift_gcn.", "token_projector."),
+                include_prefixes=checkpoint_include_prefixes(config),
                 trainable_only=True,
             )
         save_checkpoint(
@@ -257,7 +270,7 @@ def run(ctx: dict, args) -> None:
             epoch=epoch,
             metrics=metrics,
             extra=checkpoint_extra,
-            include_prefixes=("shift_gcn.", "token_projector."),
+            include_prefixes=checkpoint_include_prefixes(config),
             trainable_only=True,
         )
         update_run_registry(model_dir, dirs["exp_name"], epoch, metrics)

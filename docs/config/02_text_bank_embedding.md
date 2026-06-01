@@ -17,37 +17,36 @@ text_branch.description_variant
 text_branch.embedding.prompt
 text_branch.embedding.k_text
 text_branch.embedding.pooling
+text_branch.embedding.main_label_alpha
 text_branch.embedding.logit_temperature
 ```
 
 `description_variant` 可选：
 
 ```text
-label_only
-label_local_motion
-label_local_motion_object
-full
+structured
+```
+
+缓存会同时生成 4 个 bank：
+
+```text
+Zlabel: 只编码类别名文本
+Zmotion: 编码 skeleton-observable motion 和关键身体部位
+Zphase: 编码 start/middle/end 时序文本
+Zmain: Norm(alpha * Zlabel + (1 - alpha) * Zmotion)
 ```
 
 默认输出文件名会携带关键文本配置：
 
 ```yaml
-paths.text_bank: "{project_root}/data/cache/text_embeddings_ntu{text_num_classes}_zsl{text_mode}.pt"
-```
-
-例如：
-
-```text
-text_embeddings_ntu120_zsl_full.pt
-text_embeddings_ntu120_zsl_label.pt
-text_embeddings_ntu120_zsl_label_local_motion.pt
+paths.text_bank: "{project_root}/data/cache/text_embeddings_ntu{text_num_classes}_zsl{text_mode}_k{k_text}_{text_pooling}_a{main_label_alpha}.pt"
 ```
 
 说明：
 
 - `k_text` 是 text branch 的 GIRCSE soft-token 生成步数。
 - `pooling` 可选 `generate_mean` 或 `last`。
-- `text_mode` 是带下划线的产物后缀：`_full`、`_label`、`_label_local_motion`、`_label_local_motion_object`。
+- `main_label_alpha: 0.7` 表示 `Zmain` 中 70% 来自 `Zlabel`，30% 来自 `Zmotion`。
+- `text_mode` 目前只有 `_structured`。
 - 改 description cache、GIRCSE 路径、`description_variant` 或 `text_branch.embedding.*` 后，应重新生成 `text_bank`。
-- 如果你要同时比较不同 `k_text` 或 `pooling`，手动把它们也加进 `paths.text_bank`。
-- 保存的 text bank metadata 会记录 `description_variant` 和 `text_mode`，训练/评估加载时会做一致性校验。
+- 训练/评估加载 text bank 时会校验 `text_mode`、GIRCSE 路径、prompt、`k_text`、`pooling`、`main_label_alpha` 等 metadata。

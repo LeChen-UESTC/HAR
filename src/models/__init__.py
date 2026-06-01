@@ -3,7 +3,7 @@
 from .encoder import ShiftGCNBackbone
 from .projection import TokenProjector
 from .qformer_projector import SkeletonQFormerProjector
-from .skeleton_gircse import SkeletonGIRCSE
+from .skeleton_gircse import AnchorHiddenStateEmbedding, DirectQFormerEmbedding, SkeletonGIRCSE
 from .soft_token_generator import SoftTokenGenerator
 
 __all__ = [
@@ -11,5 +11,7 @@ __all__ = [
     "TokenProjector",
     "SkeletonQFormerProjector",
     "SkeletonGIRCSE",
+    "DirectQFormerEmbedding",
+    "AnchorHiddenStateEmbedding",
     "SoftTokenGenerator",
 ]

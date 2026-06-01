@@ -1,0 +1,9 @@
+base_config: har_experiment.yaml
+
+experiment:
+  variant_name: structured_general
+  tags: ["skeleton-gircse", "structured_general"]
+
+model:
+  projector:
+    type: general_qformer

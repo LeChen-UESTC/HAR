@@ -89,7 +89,7 @@ class TextGIRCSEEncoder:
 
 def encode_text_bank(
     class_names: list[str],
-    descriptions: dict[str, dict[str, str]],
+    descriptions: dict[str, dict[str, Any]],
     base_model_path: str,
     adapter_path: str | None,
     prompt_template: str,
@@ -99,18 +99,44 @@ def encode_text_bank(
     normalize: bool = True,
     logit_temperature: float = 1.0,
     pooling_method: str = "generate_mean",
+    main_label_alpha: float = 0.7,
     runtime: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     import torch
+    import torch.nn.functional as F
 
-    from .description_templates import build_rich_description
+    from .description_templates import build_text_views, normalize_description_record
+    from .generate_rich_description import validate_description_record
 
     logger = logging.getLogger(__name__)
-    rich = {
-        label: build_rich_description(descriptions.get(label, label), variant=variant)
+    if variant != "structured":
+        raise ValueError(f"text_branch.description_variant must be structured, got {variant!r}")
+    records = {}
+    for label in class_names:
+        if label not in descriptions:
+            raise KeyError(
+                f"Description cache is missing class {label!r}. "
+                "Regenerate paths.description_cache with scripts/generate_rich_description.py."
+            )
+        record = descriptions[label]
+        if not isinstance(record, dict):
+            raise TypeError(
+                f"Description for class {label!r} must be a structured object, got {type(record).__name__}. "
+                "Regenerate paths.description_cache with the structured schema."
+            )
+        validate_description_record(record, label)
+        records[label] = normalize_description_record(record)
+    text_views = {
+        label: build_text_views(records[label])
         for label in class_names
     }
-    prompts = [prompt_template.format(rich_description=rich[label]) for label in class_names]
+    prompts_by_bank = {
+        bank_name: [
+            _format_text_prompt(prompt_template, text_views[label][bank_name])
+            for label in class_names
+        ]
+        for bank_name in ("label", "motion", "phase")
+    }
     logger.info("Loading GIRCSE text encoder: base=%s adapter=%s", base_model_path, adapter_path)
     encoder = TextGIRCSEEncoder(
         base_model_path=base_model_path,
@@ -125,19 +151,37 @@ def encode_text_bank(
         trust_remote_code=bool((runtime or {}).get("trust_remote_code", True)),
         device_map=(runtime or {}).get("device_map_text", "auto"),
     )
-    logger.info("Encoding %s text prompts with k_text=%s", len(prompts), k_text)
-    z_text = encoder.encode(prompts)
+    encoded = {}
+    for bank_name, prompts in prompts_by_bank.items():
+        logger.info("Encoding %s %s text prompts with k_text=%s", len(prompts), bank_name, k_text)
+        encoded[bank_name] = encoder.encode(prompts)
+    alpha = float(main_label_alpha)
+    if alpha < 0.0 or alpha > 1.0:
+        raise ValueError(f"text_branch.embedding.main_label_alpha must be in [0, 1], got {alpha}")
+    z_text = F.normalize(alpha * encoded["label"] + (1.0 - alpha) * encoded["motion"], dim=-1)
 
     payload = {
         "class_names": class_names,
-        "rich_descriptions": rich,
+        "descriptions": records,
+        "text_views": text_views,
         "z_text": z_text,
+        "z_text_main": z_text,
+        "z_text_label": encoded["label"],
+        "z_text_motion": encoded["motion"],
+        "z_text_phase": encoded["phase"],
+        "class_ids": torch.arange(len(class_names), dtype=torch.long),
         "metadata": {
             "base_model_path": base_model_path,
             "adapter_path": adapter_path,
             "prompt_template": prompt_template,
             "description_variant": variant,
             "text_mode": text_mode_suffix_from_variant(variant),
+            "text_banks": ["main", "label", "motion", "phase"],
+            "main_fusion": {
+                "type": "label_motion_residual",
+                "label_alpha": alpha,
+                "motion_alpha": 1.0 - alpha,
+            },
             "k_text": k_text,
             "normalize": normalize,
             "logit_temperature": logit_temperature,
@@ -149,3 +193,9 @@ def encode_text_bank(
     torch.save(payload, output_path)
     logger.info("Saved text bank to %s", output_path)
     return payload
+
+
+def _format_text_prompt(prompt_template: str, text: str) -> str:
+    if "{text}" in prompt_template:
+        return prompt_template.format(text=text)
+    return prompt_template.format(rich_description=text)
