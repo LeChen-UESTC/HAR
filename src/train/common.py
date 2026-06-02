@@ -187,6 +187,8 @@ def normalize_runtime_aliases(config: dict[str, Any]) -> None:
 
 
 def apply_runtime_environment(config: dict[str, Any]) -> None:
+    if get_world_size() > 1:
+        return
     cuda_visible_devices = config.get("runtime", {}).get("cuda_visible_devices")
     if cuda_visible_devices in {None, "", "null"}:
         return

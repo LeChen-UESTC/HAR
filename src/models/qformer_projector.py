@@ -106,7 +106,7 @@ class SkeletonQFormerProjector(nn.Module):
             dtype=torch.long,
             device=skeleton_tokens.device,
         )
-        outputs = self.qformer.bert(
+        outputs = self.qformer(
             query_embeds=query_tokens,
             encoder_hidden_states=skeleton_tokens,
             encoder_attention_mask=encoder_attention_mask,
@@ -150,7 +150,7 @@ class SkeletonQFormerProjector(nn.Module):
 
     @staticmethod
     def _build_qformer(cfg: QFormerProjectorConfig) -> nn.Module:
-        from src.third_party.lavis_blip2_qformer.Qformer import BertConfig, BertLMHeadModel
+        from src.third_party.lavis_blip2_qformer.Qformer import BertConfig, BertModel
 
         encoder_config = BertConfig()
         encoder_config.vocab_size = 30522
@@ -167,11 +167,28 @@ class SkeletonQFormerProjector(nn.Module):
         encoder_config.query_length = cfg.num_query_tokens
 
         if cfg.init_from_pretrained:
-            return BertLMHeadModel.from_pretrained(
+            model = BertModel.from_pretrained(
                 cfg.pretrained_name_or_path,
                 config=encoder_config,
+                add_pooling_layer=False,
             )
-        return BertLMHeadModel(encoder_config)
+        else:
+            model = BertModel(encoder_config, add_pooling_layer=False)
+        SkeletonQFormerProjector._freeze_query_only_unused_modules(model)
+        return model
+
+    @staticmethod
+    def _freeze_query_only_unused_modules(model: nn.Module) -> None:
+        for module_name in ("word_embeddings", "position_embeddings"):
+            module = getattr(model.embeddings, module_name, None)
+            if module is None:
+                continue
+            for param in module.parameters():
+                param.requires_grad = False
+        for layer in model.encoder.layer:
+            for module in (layer.intermediate, layer.output):
+                for param in module.parameters():
+                    param.requires_grad = False
 
 
 def qformer_config_from_dict(projector_cfg: dict[str, Any]) -> QFormerProjectorConfig:
