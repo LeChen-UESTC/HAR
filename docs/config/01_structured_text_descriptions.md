@@ -20,20 +20,24 @@ text_branch.description_variant
 structured
 ```
 
-每个类别只允许这 4 个字段：
+`descriptions.json` 可以是 list：
 
 ```json
-{
-  "label": "writing",
-  "observable_motion": "One hand performs small repeated strokes in front of the upper body.",
-  "key_body_parts": ["hand", "arm", "torso"],
-  "temporal_phases": {
-    "start": "The hand moves toward the front body area.",
-    "middle": "The hand performs repeated small writing-like strokes.",
-    "end": "The hand movement slows down or stops."
+[
+  {
+    "label": "writing",
+    "observable_motion": "One hand performs small repeated strokes in front of the upper body.",
+    "key_body_parts": ["hand", "arm", "torso"],
+    "temporal_phases": {
+      "start": "The hand moves toward the front body area.",
+      "middle": "The hand performs repeated small writing-like strokes.",
+      "end": "The hand movement slows down or stops."
+    }
   }
-}
+]
 ```
+
+也可以是 `{label: record}` 形式的 dict。每个 record 只允许这 4 个字段：`label`、`observable_motion`、`key_body_parts`、`temporal_phases`。
 
 说明：
 

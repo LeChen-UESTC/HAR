@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .encode_text_embedding import encode_text_bank
-from .structured_descriptions import load_class_names
+from .structured_descriptions import load_class_names, normalize_description_cache
 
 
 def cache_text_bank_from_config(config: dict[str, Any]) -> dict[str, Any]:
@@ -30,7 +30,7 @@ def cache_text_bank_from_config(config: dict[str, Any]) -> dict[str, Any]:
         paths["embedding_model"],
     )
     with Path(paths["description_cache"]).open("r", encoding="utf-8") as handle:
-        descriptions = json.load(handle)
+        descriptions = normalize_description_cache(json.load(handle))
 
     return encode_text_bank(
         class_names=class_names,

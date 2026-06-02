@@ -64,6 +64,45 @@ def load_class_names(path: str | Path, max_classes: int | None = None) -> list[s
     return class_names
 
 
+def normalize_description_cache(payload: Any) -> dict[str, dict[str, Any]]:
+    if isinstance(payload, list):
+        records: dict[str, dict[str, Any]] = {}
+        for index, item in enumerate(payload):
+            if not isinstance(item, dict):
+                raise TypeError(
+                    f"Description cache list item {index} must be an object, got {type(item).__name__}"
+                )
+            label = str(item.get("label", "")).strip()
+            if not label:
+                raise ValueError(f"Description cache list item {index} is missing a non-empty label")
+            if label in records:
+                raise ValueError(f"Duplicate description label in cache: {label!r}")
+            records[label] = item
+        return records
+
+    if isinstance(payload, dict):
+        if isinstance(payload.get("descriptions"), list):
+            return normalize_description_cache(payload["descriptions"])
+        records = {}
+        for label, item in payload.items():
+            if not isinstance(item, dict):
+                raise TypeError(
+                    f"Description cache entry {label!r} must be an object, got {type(item).__name__}"
+                )
+            record_label = str(item.get("label", label)).strip()
+            if not record_label:
+                raise ValueError(f"Description cache entry {label!r} is missing a non-empty label")
+            if record_label in records:
+                raise ValueError(f"Duplicate description label in cache: {record_label!r}")
+            records[record_label] = item
+        return records
+
+    raise TypeError(
+        "Description cache must be either a list of structured records or a dict keyed by label, "
+        f"got {type(payload).__name__}"
+    )
+
+
 def validate_description_record(record: dict[str, Any], label: str) -> None:
     missing = [field for field in REQUIRED_DESCRIPTION_FIELDS if field not in record]
     if missing:

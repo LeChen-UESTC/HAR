@@ -49,6 +49,8 @@ key_body_parts
 temporal_phases.start / middle / end
 ```
 
+`descriptions.json` 支持 list of records，也支持 `{label: record}` 字典形式。
+
 然后缓存 text bank：
 
 ```bash
