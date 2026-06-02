@@ -7,6 +7,7 @@ import torch
 import torch.nn.functional as F
 
 from src.train.common import move_batch_to_device, resolve_class_scope
+from src.utils.distributed import reduce_sum
 
 
 def compute_logits(
@@ -124,14 +125,20 @@ def evaluate_embedding_model(
             for sample_id, label, pred in zip(batch["sample_id"], labels.detach().cpu(), pred_labels.detach().cpu())
         )
 
+    total_global = reduce_sum(total, device=device)
+    correct_global = reduce_sum(correct, device=device)
     metrics = {
-        "top1": correct / max(total, 1),
-        "num_samples": total,
+        "top1": correct_global / max(total_global, 1.0),
+        "num_samples": int(total_global),
         "predictions": predictions,
     }
     if seen_tensor is not None:
-        seen_top1 = seen_correct / seen_total if seen_total else 0.0
-        unseen_top1 = unseen_correct / unseen_total if unseen_total else 0.0
+        seen_total_global = reduce_sum(seen_total, device=device)
+        seen_correct_global = reduce_sum(seen_correct, device=device)
+        unseen_total_global = reduce_sum(unseen_total, device=device)
+        unseen_correct_global = reduce_sum(unseen_correct, device=device)
+        seen_top1 = seen_correct_global / seen_total_global if seen_total_global else 0.0
+        unseen_top1 = unseen_correct_global / unseen_total_global if unseen_total_global else 0.0
         h_mean = (
             2.0 * seen_top1 * unseen_top1 / (seen_top1 + unseen_top1)
             if seen_top1 + unseen_top1 > 0
@@ -142,8 +149,8 @@ def evaluate_embedding_model(
                 "seen_top1": seen_top1,
                 "unseen_top1": unseen_top1,
                 "h_mean": h_mean,
-                "seen_samples": seen_total,
-                "unseen_samples": unseen_total,
+                "seen_samples": int(seen_total_global),
+                "unseen_samples": int(unseen_total_global),
             }
         )
     return metrics

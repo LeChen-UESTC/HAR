@@ -35,7 +35,7 @@ from src.train.factory import (
     configure_text_embedding_dim,
 )
 from src.utils.checkpoint import save_checkpoint
-from src.utils.distributed import is_main_process
+from src.utils.distributed import is_main_process, reduce_sum, wrap_model_for_distributed
 from src.utils.metrics import append_jsonl
 from src.utils.wandb_utils import wandb_log
 
@@ -63,6 +63,7 @@ def run(ctx: dict, args) -> None:
     z_text_all = text_banks_all["main"]
     configure_text_embedding_dim(model, int(z_text_all.shape[-1]), device)
     optimizer = build_optimizer(config, model)
+    model = wrap_model_for_distributed(model, device=device)
     train_eval_text_banks = None
     if train_eval_loaders is not None:
         train_eval_text_banks = build_train_eval_text_banks(config, z_text_all, class_ids_all)
@@ -96,6 +97,8 @@ def run(ctx: dict, args) -> None:
     }
 
     for epoch in range(1, int(config["train"]["epochs"]) + 1):
+        if hasattr(train_loader.sampler, "set_epoch"):
+            train_loader.sampler.set_epoch(epoch)
         model.train()
         total_loss = 0.0
         total = 0
@@ -156,7 +159,9 @@ def run(ctx: dict, args) -> None:
                 )
                 model.train()
 
-        metrics = {"epoch": epoch, "train_loss": total_loss / max(total, 1)}
+        reduced_total_loss = reduce_sum(total_loss, device=device)
+        reduced_total = reduce_sum(total, device=device)
+        metrics = {"epoch": epoch, "train_loss": reduced_total_loss / max(reduced_total, 1.0)}
         if (
             train_eval_loaders is not None
             and train_eval_text_banks is not None

@@ -36,7 +36,7 @@ from src.train.factory import (
     place_embedding_model,
 )
 from src.utils.checkpoint import load_checkpoint, save_checkpoint, update_run_registry
-from src.utils.distributed import is_main_process
+from src.utils.distributed import is_main_process, reduce_sum, wrap_model_for_distributed
 from src.utils.metrics import append_jsonl
 from src.utils.wandb_utils import wandb_log
 
@@ -76,6 +76,7 @@ def run(ctx: dict, args) -> None:
         logger.info("Loaded checkpoint: %s", args.checkpoint)
 
     optimizer = build_optimizer(config, model)
+    model = wrap_model_for_distributed(model, device=device)
     train_eval_text_banks = None
     if train_eval_loaders is not None:
         train_eval_text_banks = build_train_eval_text_banks(config, text_banks_all["main"], class_ids_all)
@@ -116,6 +117,8 @@ def run(ctx: dict, args) -> None:
     }
 
     for epoch in range(1, int(config["train"]["epochs"]) + 1):
+        if hasattr(train_loader.sampler, "set_epoch"):
+            train_loader.sampler.set_epoch(epoch)
         model.train()
         total_loss = 0.0
         total = 0
@@ -166,7 +169,9 @@ def run(ctx: dict, args) -> None:
             scaler.update()
             optimizer.zero_grad(set_to_none=True)
 
-        metrics = {"epoch": epoch, "train_loss": total_loss / max(total, 1)}
+        reduced_total_loss = reduce_sum(total_loss, device=device)
+        reduced_total = reduce_sum(total, device=device)
+        metrics = {"epoch": epoch, "train_loss": reduced_total_loss / max(reduced_total, 1.0)}
         if (
             train_eval_loaders is not None
             and train_eval_text_banks is not None

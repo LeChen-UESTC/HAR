@@ -69,6 +69,16 @@ python scripts/train.py --config configs/har_experiment_structured_part_aware.ya
   --override train.stage=prealign
 ```
 
+两卡 DDP 版：
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1 torchrun --nproc_per_node=2 scripts/train.py \
+  --config configs/har_experiment_structured_part_aware.yaml \
+  --override train.stage=prealign
+```
+
+`CUDA_VISIBLE_DEVICES=0,1` 控制可见 GPU；只有 `torchrun` 会真正启动两个训练进程。
+
 第二阶段 skeleton embedding：
 
 ```bash

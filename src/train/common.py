@@ -25,7 +25,13 @@ from src.utils.config_utils import (
     save_config,
     text_mode_suffix_from_variant,
 )
-from src.utils.distributed import get_world_size, is_main_process, setup_distributed
+from src.utils.distributed import (
+    cleanup_distributed,
+    get_local_rank,
+    get_world_size,
+    is_main_process,
+    setup_distributed,
+)
 from src.utils.logging_utils import log_config_summary, setup_logger
 from src.utils.seed import seed_everything
 from src.utils.wandb_utils import init_wandb
@@ -256,6 +262,7 @@ def finalize_run(
         with meta_path.open("w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=2, sort_keys=True)
     ctx["wandb_run"].finish()
+    cleanup_distributed()
 
 
 def build_cache_manager(config: dict[str, Any], logger: Any) -> CacheManager | None:
@@ -565,6 +572,14 @@ def resolve_mixed_precision(train_cfg: dict[str, Any]) -> str:
 def select_device(config: dict[str, Any] | None = None) -> torch.device:
     runtime = (config or {}).get("runtime", {})
     requested = runtime.get("device")
+    if get_world_size() > 1:
+        if not torch.cuda.is_available():
+            return torch.device("cpu")
+        if requested:
+            device = torch.device(str(requested))
+            if device.type != "cuda":
+                raise RuntimeError(f"Distributed training requires runtime.device=cuda, got {requested!r}.")
+        return torch.device("cuda", get_local_rank())
     if requested:
         device = torch.device(str(requested))
         if device.type == "cuda" and not torch.cuda.is_available():

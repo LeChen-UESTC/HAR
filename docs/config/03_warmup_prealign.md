@@ -6,6 +6,16 @@
 python scripts/train.py --config configs/har_experiment.yaml --override train.stage=prealign
 ```
 
+两卡 DDP：
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1 torchrun --nproc_per_node=2 scripts/train.py \
+  --config configs/har_experiment.yaml \
+  --override train.stage=prealign
+```
+
+说明：`CUDA_VISIBLE_DEVICES=0,1` 只让两张卡可见；DDP 必须用 `torchrun` 启动多进程。
+
 常改字段：
 
 ```yaml

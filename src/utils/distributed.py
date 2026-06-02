@@ -55,6 +55,49 @@ def setup_distributed(backend: str = "nccl") -> bool:
     return True
 
 
+def wrap_model_for_distributed(model: Any, device: Any | None = None) -> Any:
+    if get_world_size() <= 1:
+        return model
+    import torch
+    from torch.nn.parallel import DistributedDataParallel
+
+    if torch.cuda.is_available():
+        local_rank = get_local_rank()
+        expected_device = torch.device(device) if device is not None else torch.device("cuda", local_rank)
+        if expected_device.type != "cuda":
+            raise RuntimeError(
+                f"Distributed CUDA training requires a CUDA device, got {expected_device}."
+            )
+        param_devices = {param.device for param in model.parameters()}
+        if len(param_devices) != 1 or next(iter(param_devices)) != expected_device:
+            raise RuntimeError(
+                "DDP requires all model parameters to be on the current local-rank device. "
+                f"Expected {expected_device}, got {sorted(str(item) for item in param_devices)}. "
+                "For prealign this should be automatic; for Qwen3Embedding4B training do not use "
+                "a sharded device_map with DDP."
+            )
+        return DistributedDataParallel(
+            model,
+            device_ids=[local_rank],
+            output_device=local_rank,
+            broadcast_buffers=False,
+        )
+    return DistributedDataParallel(model, broadcast_buffers=False)
+
+
+def reduce_sum(value: float | int, device: Any | None = None) -> float:
+    if get_world_size() <= 1:
+        return float(value)
+    import torch
+    import torch.distributed as dist
+
+    if device is None:
+        device = torch.device("cuda", get_local_rank()) if torch.cuda.is_available() else torch.device("cpu")
+    tensor = torch.tensor(float(value), dtype=torch.float64, device=device)
+    dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
+    return float(tensor.item())
+
+
 def cleanup_distributed() -> None:
     try:
         import torch.distributed as dist
