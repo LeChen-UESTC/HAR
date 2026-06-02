@@ -34,7 +34,7 @@ from src.train.factory import (
     checkpoint_include_prefixes,
     configure_text_embedding_dim,
 )
-from src.utils.checkpoint import save_checkpoint
+from src.utils.checkpoint import load_checkpoint, save_checkpoint
 from src.utils.distributed import is_main_process, reduce_sum, wrap_model_for_distributed
 from src.utils.metrics import append_jsonl
 from src.utils.wandb_utils import wandb_log
@@ -63,6 +63,40 @@ def run(ctx: dict, args) -> None:
     z_text_all = text_banks_all["main"]
     configure_text_embedding_dim(model, int(z_text_all.shape[-1]), device)
     optimizer = build_optimizer(config, model)
+    start_epoch = 1
+    if args.checkpoint:
+        payload = load_checkpoint(
+            args.checkpoint,
+            model,
+            map_location="cpu",
+            strict=False,
+            include_prefixes=checkpoint_include_prefixes(config),
+            expected_projector_type=config.get("_meta", {}).get("projector_type"),
+            expected_text_mode=config.get("_meta", {}).get("text_mode"),
+        )
+        if "optimizer" in payload:
+            try:
+                optimizer.load_state_dict(payload["optimizer"])
+            except (RuntimeError, ValueError) as exc:
+                logger.warning(
+                    "Could not restore optimizer state from prealign checkpoint; "
+                    "continuing with a fresh optimizer. reason=%s",
+                    exc,
+                )
+        checkpoint_epoch = int(payload.get("epoch") or 0)
+        start_epoch = checkpoint_epoch + 1
+        if start_epoch > int(config["train"]["epochs"]):
+            raise ValueError(
+                "Prealign resume checkpoint is already at or beyond configured train.epochs. "
+                f"checkpoint_epoch={checkpoint_epoch}, train.epochs={config['train']['epochs']}. "
+                "Increase train_presets.prealign.train.epochs, e.g. --override train_presets.prealign.train.epochs=30."
+            )
+        logger.info(
+            "Resumed prealign checkpoint: path=%s checkpoint_epoch=%s next_epoch=%s",
+            args.checkpoint,
+            checkpoint_epoch,
+            start_epoch,
+        )
     model = wrap_model_for_distributed(model, device=device)
     train_eval_text_banks = None
     if train_eval_loaders is not None:
@@ -96,7 +130,7 @@ def run(ctx: dict, args) -> None:
         "train_stage": config.get("train", {}).get("stage"),
     }
 
-    for epoch in range(1, int(config["train"]["epochs"]) + 1):
+    for epoch in range(start_epoch, int(config["train"]["epochs"]) + 1):
         if hasattr(train_loader.sampler, "set_epoch"):
             train_loader.sampler.set_epoch(epoch)
         model.train()

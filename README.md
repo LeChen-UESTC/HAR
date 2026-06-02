@@ -79,6 +79,16 @@ CUDA_VISIBLE_DEVICES=0,1 torchrun --nproc_per_node=2 scripts/train.py \
 
 `CUDA_VISIBLE_DEVICES=0,1` 控制可见 GPU；只有 `torchrun` 会真正启动两个训练进程。
 
+继续已有 prealign checkpoint：
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1 torchrun --nproc_per_node=2 scripts/train.py \
+  --config configs/har_experiment_structured_part_aware.yaml \
+  --override train.stage=prealign \
+  --override train_presets.prealign.train.epochs=30 \
+  --checkpoint /data/chenle/GIRCSE/HAR/outputs/models/train_prealign_NTU_55_5_BS256_EP15_structured_part_aware_qformer/epoch_15.ckpt
+```
+
 第二阶段 skeleton embedding：
 
 ```bash

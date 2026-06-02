@@ -51,3 +51,15 @@ train_presets.prealign.train.eval_every_epochs: 1
 ```
 
 第二阶段用第一阶段输出的 `last.ckpt` 或 `best.ckpt` 作为 `--checkpoint`。
+
+继续 prealign：
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1 torchrun --nproc_per_node=2 scripts/train.py \
+  --config configs/har_experiment_structured_part_aware.yaml \
+  --override train.stage=prealign \
+  --override train_presets.prealign.train.epochs=30 \
+  --checkpoint /data/chenle/GIRCSE/HAR/outputs/models/train_prealign_NTU_55_5_BS256_EP15_structured_part_aware_qformer/epoch_15.ckpt
+```
+
+这里 `epochs=30` 表示总共训练到第 30 个 epoch；checkpoint 是第 15 个 epoch 时，会从第 16 个 epoch 继续。
