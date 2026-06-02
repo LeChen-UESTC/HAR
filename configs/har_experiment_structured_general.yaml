@@ -2,7 +2,7 @@ base_config: har_experiment.yaml
 
 experiment:
   variant_name: structured_general
-  tags: ["skeleton-gircse", "structured_general"]
+  tags: ["skeleton-embedding", "structured_general"]
 
 model:
   projector:

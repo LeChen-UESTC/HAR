@@ -172,7 +172,7 @@ class TCN_GCN_unit(nn.Module):
 
 
 class Model(nn.Module):
-    """Official Shift-GCN architecture adapted for Skeleton-GIRCSE."""
+    """Official Shift-GCN architecture adapted for skeleton embedding."""
 
     out_dim = 256
 

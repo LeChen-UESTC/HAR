@@ -29,7 +29,7 @@ def resolve_torch_dtype(dtype_name: str | None, fallback_to_float32_on_cpu: bool
 def hf_model_kwargs(config: dict[str, Any], for_text: bool = False) -> dict[str, Any]:
     runtime = config.get("runtime", {})
     kwargs = {
-        "torch_dtype": resolve_torch_dtype(
+        "dtype": resolve_torch_dtype(
             runtime.get("torch_dtype", "bfloat16"),
             bool(runtime.get("fallback_to_float32_on_cpu", True)),
         ),
@@ -40,6 +40,8 @@ def hf_model_kwargs(config: dict[str, Any], for_text: bool = False) -> dict[str,
         kwargs["attn_implementation"] = attn_implementation
     device_key = "device_map_text" if for_text else "device_map_train"
     device_map = runtime.get(device_key)
+    if isinstance(device_map, str) and device_map.lower() in {"", "null", "none"}:
+        device_map = None
     if device_map is not None:
         kwargs["device_map"] = device_map
     return kwargs

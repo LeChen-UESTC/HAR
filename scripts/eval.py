@@ -4,7 +4,6 @@ from __future__ import annotations
 import _bootstrap  # noqa: F401
 
 import eval_gzsl
-import eval_k_scaling
 import eval_zsl
 
 from src.train.common import finalize_run, initialize_run_for_kind, parse_common_args
@@ -19,12 +18,10 @@ def main() -> None:
             eval_zsl.run(ctx, args)
         elif task == "gzsl":
             eval_gzsl.run(ctx, args)
-        elif task in {"k_scaling", "k-scaling"}:
-            eval_k_scaling.run(ctx, args)
         else:
             raise ValueError(
                 "Unsupported eval.task="
-                f"{task!r}. Expected zsl, gzsl, or k_scaling."
+                f"{task!r}. Expected zsl or gzsl."
             )
     except Exception as exc:
         finalize_run(ctx, status="failed", extra={"error": repr(exc)})

@@ -1,110 +1,120 @@
-# Skeleton-GIRCSE
-- Project root: `/data/chenle/GIRCSE/HAR`
-- Conda environment: `/data/chenle/.conda/envs/gircse`
-- Qwen base model: `/data/chenle/GIRCSE/Qwen2.5-7B`
-- GIRCSE LoRA adapter: `/data/chenle/GIRCSE/GIRCSE-QWEN7B`
-- Shift-GCN checkpoints: `/data/chenle/GIRCSE/HAR/models`
+# Skeleton Embedding HAR
+
+- 项目根目录: `/data/chenle/GIRCSE/HAR`
+- Conda 环境: `/data/chenle/.conda/envs/gircse`
+- Embedding 模型: `/data/chenle/GIRCSE/HAR/models/Qwen3Embedding4B`
+- 结构化描述: `/data/chenle/GIRCSE/HAR/data/cache/descriptions.json`
+- Shift-GCN checkpoint: `/data/chenle/GIRCSE/HAR/models`
 - NTU60 npz: `/data/chenle/GIRCSE/HAR/data/ntu_60/NTU_60.npz`
 - NTU120 npz: `/data/chenle/GIRCSE/HAR/data/ntu_120/NTU120.npz`
-`GIRCSE-QWEN7B` is a LoRA adapter, not a standalone base model. The code loads
-the local Qwen base model first, then attaches the GIRCSE adapter.
 
-## Single Config
-Use:
+当前代码只保留 embedding-only 流程。
+所有文本原型和 skeleton-prefix reader 都基于 `Qwen3Embedding4B`。
+
+## 配置
+
+主配置：
+
 ```bash
 configs/har_experiment.yaml
 ```
-Edit only these fields for common runs:
-```yaml
-project:
-  root: /data/chenle/GIRCSE/HAR
-experiment:
-  active_split: NTU55_5  # NTU55_5, NTU48_12, NTU110_10, NTU96_24
-runtime:
-  cuda_visible_devices: "0"  # or null to use the current shell environment
-  device: cuda
-train:
-  stage: skeleton_gircse  # prealign or skeleton_gircse
-eval:
-  task: zsl  # zsl, gzsl, or k_scaling
+
+常用 projector 变体：
+
+```bash
+configs/har_experiment_structured_general.yaml
+configs/har_experiment_structured_part_aware.yaml
+configs/har_experiment_structured_linear.yaml
 ```
 
-## Text Bank
-Rich descriptions and text embeddings are shared by NTU60/NTU120 splits:
+最常改字段：
+
+```yaml
+experiment.active_split: NTU55_5  # NTU55_5, NTU48_12, NTU110_10, NTU96_24
+runtime.cuda_visible_devices: "0"
+paths.embedding_model: /data/chenle/GIRCSE/HAR/models/Qwen3Embedding4B
+paths.description_cache: "{project_root}/data/cache/descriptions.json"
+train.stage: skeleton_embedding  # prealign, skeleton_embedding, direct_qformer_baseline
+eval.task: zsl  # zsl, gzsl
+```
+
+## 缓存 Text Bank
+
+先确认 `paths.description_cache` 已存在并包含结构化字段：
+
+```text
+label
+observable_motion
+key_body_parts
+temporal_phases.start / middle / end
+```
+
+然后缓存 text bank：
+
 ```bash
-python scripts/generate_rich_description.py --config configs/har_experiment.yaml
 python scripts/cache_text_bank.py --config configs/har_experiment.yaml
 ```
-NTU60 reuses the NTU120 text bank and selects only the classes needed by the
-active split.
 
-## Train
-Stage 1 warmup:
+缓存会生成 `Zlabel`、`Zmotion`、`Zphase`、`Zmain`。`Zmain` 默认是
+`Norm(0.7 * Zlabel + 0.3 * Zmotion)`。
+
+## 训练
+
+第一阶段 prealign：
+
 ```bash
-python scripts/train.py --config configs/har_experiment_label_part_aware.yaml \
+python scripts/train.py --config configs/har_experiment_structured_part_aware.yaml \
   --override train.stage=prealign
 ```
-Stage 2 Skeleton-GIRCSE:
+
+第二阶段 skeleton embedding：
+
 ```bash
-python scripts/train.py --config configs/har_experiment_full_linear.yaml \
-  --override train.stage=skeleton_gircse \
-  --checkpoint /data/chenle/GIRCSE/HAR/outputs/models/train_prealign_NTU_55_5_BS128_EP10_full_linear/last.ckpt
+python scripts/train.py --config configs/har_experiment_structured_part_aware.yaml \
+  --override train.stage=skeleton_embedding \
+  --checkpoint /data/chenle/GIRCSE/HAR/outputs/models/train_prealign_NTU_55_5_BS128_EP10_structured_part_aware_qformer/last.ckpt
 ```
-## Evaluate
-ZSL:
+
+Direct baseline：
+
 ```bash
-python scripts/eval.py --config configs/har_experiment.yaml \
+python scripts/train.py --config configs/har_experiment_structured_part_aware.yaml \
+  --override train.stage=direct_qformer_baseline
+```
+
+## 评估
+
+ZSL：
+
+```bash
+python scripts/eval.py --config configs/har_experiment_structured_part_aware.yaml \
   --override eval.task=zsl \
-  --checkpoint /data/chenle/GIRCSE/HAR/outputs/models/train_NTU_55_5_BS1_EP20_K5/epoch_8.ckpt
+  --checkpoint /path/to/stage2/last.ckpt
 ```
-GZSL:
+
+GZSL：
+
 ```bash
-python scripts/eval.py --config configs/har_experiment.yaml \
+python scripts/eval.py --config configs/har_experiment_structured_part_aware.yaml \
   --override eval.task=gzsl \
-  --checkpoint /data/chenle/GIRCSE/HAR/outputs/models/train_NTU_55_5_BS1_EP20_K5/last.ckpt
+  --checkpoint /path/to/stage2/last.ckpt
 ```
 
-K scaling:
-```bash
-python scripts/eval.py --config configs/har_experiment.yaml \
-  --override eval.task=k_scaling \
-  --checkpoint /data/chenle/GIRCSE/HAR/outputs/models/train_NTU_55_5_BS1_EP20_K5/last.ckpt
-```
+## 输出
 
+训练输出目录会带 `text_mode` 和 `projector_mode` 后缀，例如：
 
-## Outputs
-Training output directories use readable names:
 ```text
-outputs/models/train_NTU_55_5_BS1_EP20_K5/
+outputs/models/train_skeleton_embedding_NTU_55_5_BS1_EP20_structured_part_aware_qformer/
 ```
-Evaluation output directories use the eval task:
-```text
-outputs/eval/eval_zsl_NTU_55_5_BS16_K10/
-```
-Each training run writes:
-```text
-epoch_1.ckpt
-epoch_2.ckpt
-...
-last.ckpt
-metrics.jsonl
-config.yaml
-run_meta.json
-```
-Checkpoints save only trainable skeleton-side parameters under `shift_gcn.*` and
-`token_projector.*`. Frozen Qwen/GIRCSE weights are not written into epoch
-checkpoints. If `train.freeze_shift_gcn=true`, the frozen Shift-GCN parameters
-are also excluded.
-`run_meta.json` records:
-- `started_at`
-- `ended_at`
-- `duration_seconds`
-- `status`
-- `active_split`
-- `train_stage`
-- `eval_task`
-- `cuda_visible_devices`
-- `command`
-`outputs/models/all/latest_run.json` and `outputs/models/all/runs.jsonl` still
-track the latest Stage 2 checkpoint and per-epoch registry entries.
 
+checkpoint 只保存可训练的 skeleton-side 参数：
+
+```text
+shift_gcn.*
+token_projector.*
+embedding_projection.*
+embedding_head.*  # direct_qformer_baseline only
+```
+
+冻结的 `Qwen3Embedding4B` 参数不会写入 checkpoint。

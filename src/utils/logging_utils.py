@@ -20,7 +20,7 @@ class ContextFilter(logging.Filter):
 
 
 def setup_logger(
-    name: str = "skeleton_gircse",
+    name: str = "skeleton_embedding",
     log_root: str | Path = "logs",
     filename: str | None = None,
     level: int = logging.INFO,

@@ -2,7 +2,7 @@ project:
   root: /data/chenle/GIRCSE/HAR
 
 experiment:
-  project_name: skeleton-gircse
+  project_name: skeleton-embedding
   active_split: NTU55_5 # NTU55_5 / NTU48_12 / NTU110_10 / NTU96_24
   # 可选值: compact=短实验名; 其他值=包含数据、模型、loss、hash 的详细实验名.
   name_style: compact
@@ -10,7 +10,7 @@ experiment:
   output_root: "{project_root}/outputs"
   log_root: "{project_root}/logs"
   wandb_mode: offline # 可选值: offline=本地离线记录; online=同步到 W&B; disabled=不启用 W&B.
-  tags: ["skeleton-gircse", "single-config"]
+  tags: ["skeleton-embedding", "single-config"]
 
 runtime:
   cuda_visible_devices: "0,1"
@@ -25,10 +25,8 @@ runtime:
 paths:
   cache_root: "{project_root}/data/cache"
   class_names: "{project_root}/data/index_action_map.json"
-  qwen_instruct_model: /data/chenle/GIRCSE/Qwen2.5-7B
-  gircse_base_model: /data/chenle/GIRCSE/Qwen2.5-7B
-  gircse_adapter: /data/chenle/GIRCSE/GIRCSE-QWEN7B
-  text_bank: "{project_root}/data/cache/text_embeddings_ntu{text_num_classes}_zsl{text_mode}_k{k_text}_{text_pooling}_a{main_label_alpha}.pt"
+  embedding_model: /data/chenle/GIRCSE/HAR/models/Qwen3Embedding4B
+  text_bank: "{project_root}/data/cache/text_embeddings_ntu{text_num_classes}_zsl{text_mode}_{embedding_model}_{text_pooling}_a{main_label_alpha}.pt"
   description_cache: "{project_root}/data/cache/descriptions.json"
 
 dataset:
@@ -56,20 +54,14 @@ dataset:
 
 text_branch:
   description_variant: structured # 可选值: structured=label/motion/body_parts/temporal_phases 结构化描述.
-  generation:
-    num_classes: 120
-    max_new_tokens: 512
-    temperature: 0.2
-    top_p: 0.9
-    max_retries: 3
-    dry_run: false
+  num_classes: 120
   embedding:
-    prompt: "Instruct: Represent the semantic meaning of the following human action text for zero-shot skeleton action recognition.\nText: {text}"
-    k_text: 20
+    prompt: "Instruct: Represent the semantic meaning of the following human action text for zero-shot skeleton action recognition.\nQuery: {text}"
     normalize: true
-    pooling: generate_mean # 可选值: generate_mean=生成 token 均值; last=最后 token.
-    logit_temperature: 1.0
+    pooling: last # 可选值: last=最后非 pad token; mean=attention-mask mean.
     main_label_alpha: 0.7
+    max_length: 512
+    padding_side: left # 可选值: left, right.
 
 model:
   modality: skeleton
@@ -88,7 +80,7 @@ model:
     # qformer/general_qformer=普通 Q-Former; part_aware_qformer=带关节 part-role embedding 的 Q-Former.
     type: part_aware_qformer
     in_dim: 256
-    llm_dim: 3584
+    llm_dim: null # 自动使用 paths.embedding_model 的 hidden_size.
     target_temporal_bins: 4
     num_query_tokens: 16
     # query_roles = 6 part + 3 phase + 1 global + 6 free queries.
@@ -148,31 +140,23 @@ model:
       - right_arm
   prompt:
     text: "Instruct: Represent the semantic meaning of the preceding human skeleton motion for zero-shot action recognition.\nRepresentation:"
-  soft_tokens:
-    k_train: [1, 5, 10, 20]
-    k_test: [1, 5, 10, 20]
-    pooling: generate_mean # 可选值同 text_branch.embedding.pooling.
-    logit_temperature: 1.0
-
 loss:
-  # 可选值: classwise_infonce=单步文本对齐; stepwise_infonce_irr=多步 GIRCSE + IRR;
-  # direct_multibank_infonce=Direct baseline; anchor_multibank_infonce=Anchor baseline.
-  type: stepwise_infonce_irr
+  # 可选值: classwise_infonce=单步多 text bank 文本对齐.
+  type: classwise_infonce
   temperature: 0.05
   lambda_motion: 0.3
   lambda_phase: 0.2
-  lambda_irr: 0.1
 
 train:
-  # 可选值: prealign, skeleton_gircse, direct_qformer_baseline, anchor_hidden_baseline.
-  stage: skeleton_gircse
+  # 可选值: prealign, skeleton_embedding, direct_qformer_baseline.
+  stage: skeleton_embedding
 
 eval:
-  task: zsl # 可选值: zsl, gzsl, k_scaling.
+  task: zsl # 可选值: zsl, gzsl.
 
 
 train_presets:
-  # preset 名称可选值同 train.stage: prealign, skeleton_gircse, direct_qformer_baseline, anchor_hidden_baseline.
+  # preset 名称可选值同 train.stage: prealign, skeleton_embedding, direct_qformer_baseline.
   prealign:
     runtime:
       # 可选值同 runtime.device_map_train.
@@ -201,13 +185,13 @@ train_presets:
       temperature: 0.05
       lambda_motion: 0.3
       lambda_phase: 0.2
-  skeleton_gircse:
+  skeleton_embedding:
     runtime:
       # 可选值同 runtime.device_map_train.
       device_map_train: auto
     train:
       # 可选值同 train.stage.
-      stage: skeleton_gircse
+      stage: skeleton_embedding
       epochs: 20
       batch_size: 1
       num_workers: 4
@@ -216,7 +200,7 @@ train_presets:
       lr_projector: 0.0001
       lr_shift_gcn: 0.00001
       freeze_shift_gcn: true
-      freeze_llm: true
+      freeze_embedding_model: true
       text_bank_path: null # null=使用 paths.text_bank；也可填某个 text bank .pt 路径.
       weight_decay: 0.01
       grad_clip_norm: 1.0
@@ -228,11 +212,10 @@ train_presets:
       log_freq: 20
     loss:
       # 可选值同 loss.type.
-      type: stepwise_infonce_irr
+      type: classwise_infonce
       temperature: 0.05
       lambda_motion: 0.3
       lambda_phase: 0.2
-      lambda_irr: 0.1
   direct_qformer_baseline:
     runtime:
       # 可选值同 runtime.device_map_train.
@@ -257,38 +240,7 @@ train_presets:
       log_freq: 20
     loss:
       # 可选值同 loss.type.
-      type: direct_multibank_infonce
-      temperature: 0.05
-      lambda_motion: 0.3
-      lambda_phase: 0.2
-  anchor_hidden_baseline:
-    runtime:
-      # 可选值同 runtime.device_map_train.
-      device_map_train: auto
-    train:
-      # 可选值同 train.stage.
-      stage: anchor_hidden_baseline
-      epochs: 20
-      batch_size: 1
-      num_workers: 4
-      gradient_accumulation_steps: 8
-      gradient_checkpointing: true
-      lr_projector: 0.0001
-      lr_shift_gcn: 0.00001
-      freeze_shift_gcn: true
-      freeze_llm: true
-      text_bank_path: null
-      weight_decay: 0.01
-      grad_clip_norm: 1.0
-      mixed_precision: fp16 # 可选值同 train_presets.prealign.train.mixed_precision.
-      eval_on_train: false
-      eval_steps: null
-      eval_every_epochs: 1
-      save_freq: 1
-      log_freq: 20
-    loss:
-      # 可选值同 loss.type.
-      type: anchor_multibank_infonce
+      type: classwise_infonce
       temperature: 0.05
       lambda_motion: 0.3
       lambda_phase: 0.2
@@ -304,7 +256,6 @@ eval_presets:
       # 可选值同 sample_scope; 控制参与相似度分类的候选文本类别.
       candidate_scope: unseen
       text_bank_path: null # null=使用 paths.text_bank；也可填某个 text bank .pt 路径.
-      k: 10
       eval_batch_size: 16
       num_workers: 4
       # 可选值: top1=总体 top-1 accuracy.
@@ -322,30 +273,11 @@ eval_presets:
       # 可选值同 eval_presets.zsl.eval.candidate_scope.
       candidate_scope: all
       text_bank_path: null # null=使用 paths.text_bank；也可填某个 text bank .pt 路径.
-      k: 5
       eval_batch_size: 8
       num_workers: 4
       calibrated_stacking_gamma: 0.0
       # 可选值: top1=总体准确率; seen_top1=seen 类准确率; unseen_top1=unseen 类准确率; h_mean=seen/unseen 调和平均.
       metrics: ["top1", "seen_top1", "unseen_top1", "h_mean"]
-  k_scaling:
-    eval:
-      # 可选值同 eval.task.
-      task: k_scaling
-      # 约定值同 eval_presets.zsl.eval.stage.
-      stage: eval_k_scaling
-      # 可选值同 eval_presets.zsl.eval.split_key.
-      split_key: manifest_test
-      # 可选值同 eval_presets.zsl.eval.sample_scope.
-      sample_scope: unseen
-      # 可选值同 eval_presets.zsl.eval.candidate_scope.
-      candidate_scope: unseen
-      text_bank_path: null # null=使用 paths.text_bank；也可填某个 text bank .pt 路径.
-      eval_batch_size: 8
-      num_workers: 4
-      # 可选值: top1=总体 top-1 accuracy.
-      metrics: ["top1"]
-
 dataset_splits:
   # 可选 split 名称同 experiment.active_split.
   NTU55_5:

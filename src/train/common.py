@@ -148,12 +148,14 @@ def is_materialization_override(item: str) -> bool:
             "train.stage",
             "eval.task",
             "model.projector.type",
+            "paths.embedding_model",
             "paths.text_bank",
             "text_branch.description_variant",
-            "text_branch.generation.num_classes",
-            "text_branch.embedding.k_text",
+            "text_branch.num_classes",
             "text_branch.embedding.main_label_alpha",
             "text_branch.embedding.pooling",
+            "text_branch.embedding.max_length",
+            "text_branch.embedding.padding_side",
         }
         or is_preset_definition_key(key)
     )
@@ -464,14 +466,13 @@ def expected_text_bank_metadata(config: Mapping[str, Any]) -> dict[str, Any]:
     embedding_cfg = text_cfg.get("embedding", {}) if isinstance(text_cfg, Mapping) else {}
     paths = config.get("paths", {}) if isinstance(config, Mapping) else {}
     return {
-        "base_model_path": str(paths.get("gircse_base_model", paths.get("qwen_instruct_model", ""))),
-        "adapter_path": _optional_str(paths.get("gircse_adapter", paths.get("gircse_model"))),
+        "embedding_model_path": str(paths.get("embedding_model", "")),
         "prompt_template": str(embedding_cfg.get("prompt", "")),
-        "k_text": int(embedding_cfg.get("k_text", 20)),
         "normalize": bool(embedding_cfg.get("normalize", True)),
-        "logit_temperature": float(embedding_cfg.get("logit_temperature", 1.0)),
-        "pooling_method": str(embedding_cfg.get("pooling", "generate_mean")),
+        "pooling_method": str(embedding_cfg.get("pooling", "last")),
         "main_label_alpha": float(embedding_cfg.get("main_label_alpha", 0.7)),
+        "max_length": int(embedding_cfg.get("max_length", 512)),
+        "padding_side": str(embedding_cfg.get("padding_side", "left")),
     }
 
 
@@ -483,14 +484,13 @@ def validate_text_bank_metadata(
     if not expected:
         return
     checks = {
-        "base_model_path": str(metadata.get("base_model_path", "")),
-        "adapter_path": _optional_str(metadata.get("adapter_path")),
+        "embedding_model_path": str(metadata.get("embedding_model_path", "")),
         "prompt_template": str(metadata.get("prompt_template", "")),
-        "k_text": int(metadata.get("k_text", -1)),
         "normalize": bool(metadata.get("normalize", False)),
-        "logit_temperature": _float_or_none(metadata.get("logit_temperature")),
         "pooling_method": str(metadata.get("pooling_method", "")),
         "main_label_alpha": _float_or_none(_metadata_main_label_alpha(metadata)),
+        "max_length": _optional_int(metadata.get("max_length")),
+        "padding_side": str(metadata.get("padding_side", "")),
     }
     mismatches = []
     for key, expected_value in expected.items():
@@ -512,11 +512,13 @@ def validate_text_bank_metadata(
             f"text_bank={path}; {details}. Regenerate the text bank or point text_bank_path to the matching file."
         )
 
-
-def _optional_str(value: Any) -> str | None:
+def _optional_int(value: Any) -> int | None:
     if value is None:
         return None
-    return str(value)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _float_or_none(value: Any) -> float | None:

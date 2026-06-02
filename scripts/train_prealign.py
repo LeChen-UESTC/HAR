@@ -28,7 +28,12 @@ from src.train.eval_during_train import (
     build_train_eval_text_banks,
     evaluate_zsl_gzsl_during_train,
 )
-from src.train.factory import build_optimizer, build_warmup_model, checkpoint_include_prefixes
+from src.train.factory import (
+    build_optimizer,
+    build_warmup_model,
+    checkpoint_include_prefixes,
+    configure_text_embedding_dim,
+)
 from src.utils.checkpoint import save_checkpoint
 from src.utils.distributed import is_main_process
 from src.utils.metrics import append_jsonl
@@ -47,7 +52,6 @@ def run(ctx: dict, args) -> None:
     if config["train"].get("eval_during_train", False):
         train_eval_loaders = build_train_eval_loaders(config, cache_manager, logger)
     model = build_warmup_model(config).to(device)
-    optimizer = build_optimizer(config, model)
     text_bank_path = resolve_text_bank_path(config, "train")
     logger.info("Using text bank: mode=%s path=%s", config.get("_meta", {}).get("text_mode"), text_bank_path)
     text_banks_all, class_ids_all = load_text_bank_bundle(
@@ -57,6 +61,8 @@ def run(ctx: dict, args) -> None:
         expected_metadata=expected_text_bank_metadata(config),
     )
     z_text_all = text_banks_all["main"]
+    configure_text_embedding_dim(model, int(z_text_all.shape[-1]), device)
+    optimizer = build_optimizer(config, model)
     train_eval_text_banks = None
     if train_eval_loaders is not None:
         train_eval_text_banks = build_train_eval_text_banks(config, z_text_all, class_ids_all)
@@ -65,13 +71,6 @@ def run(ctx: dict, args) -> None:
     text_banks = {"main": z_text}
     for bank_name in ("motion", "phase"):
         text_banks[bank_name], _ = select_text_classes(text_banks_all[bank_name], class_ids_all, seen_classes)
-    projector_dim = int(config["model"]["projector"]["llm_dim"])
-    text_dim = int(z_text.shape[-1])
-    if projector_dim != text_dim:
-        raise ValueError(
-            f"Projector llm_dim={projector_dim} does not match text bank dim={text_dim}. "
-            "Regenerate the text bank with the configured GIRCSE model or fix model.projector.llm_dim."
-        )
     temperature = float(config["loss"].get("temperature", 0.05))
     bank_weights = {
         "motion": float(config["loss"].get("lambda_motion", 0.0)),
@@ -91,6 +90,8 @@ def run(ctx: dict, args) -> None:
         "projector_type": config.get("_meta", {}).get("projector_type"),
         "projector_mode": config.get("_meta", {}).get("projector_mode"),
         "text_bank_path": text_bank_path,
+        "text_embedding_dim": int(z_text_all.shape[-1]),
+        "embedding_model_path": config.get("paths", {}).get("embedding_model"),
         "train_stage": config.get("train", {}).get("stage"),
     }
 

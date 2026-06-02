@@ -24,8 +24,8 @@ train_presets.prealign.loss.lambda_phase
 
 训练内容：
 
-- `freeze_shift_gcn: true` 时，只训练 `token_projector`。
-- 第一阶段不加载 LLM，所以没有 `freeze_llm` / `freeze_lm_head`。
+- `freeze_shift_gcn: true` 时，只训练 projector；若 text bank 维度不同，还会训练 `embedding_projection`。
+- 第一阶段不前向加载 Qwen3Embedding4B，只读取其 hidden size，所以没有 `freeze_embedding_model`。
 - `device_map_train: null` 表示整个 warmup model 直接放到 `runtime.device`。
 - `text_bank_path: null` 表示使用全局 `paths.text_bank`；填路径则只覆盖第一阶段。
 - 输出目录会带 `text_mode` 和 `projector_mode` 后缀，例如 `_structured_part_aware_qformer`、`_structured_linear`。

@@ -25,7 +25,8 @@ from src.train.common import (
 from src.train.factory import (
     build_embedding_model_for_stage,
     checkpoint_include_prefixes,
-    place_skeleton_gircse_model,
+    configure_text_embedding_dim,
+    place_embedding_model,
 )
 from src.utils.checkpoint import load_checkpoint
 
@@ -40,13 +41,15 @@ def run(ctx: dict, args) -> None:
     eval_cfg = config.get("eval", {})
     split_key = str(eval_cfg.get("split_key", "manifest_test"))
     test_loader = build_dataloader(config, split_key, cache_manager, logger, train=False)
-    model = place_skeleton_gircse_model(build_embedding_model_for_stage(config), config, device)
-    eval_k = eval_cfg.get("k")
-    if eval_k is not None and hasattr(model, "soft_token_generator"):
-        eval_k = int(eval_k)
-        if eval_k < 1:
-            raise ValueError(f"eval.k must be >= 1, got {eval_k}")
-        model.soft_token_generator.K = eval_k
+    text_bank_path = resolve_text_bank_path(config, "eval")
+    z_text, class_ids = load_text_bank(
+        text_bank_path,
+        device,
+        expected_text_mode=config.get("_meta", {}).get("text_mode"),
+        expected_metadata=expected_text_bank_metadata(config),
+    )
+    model = place_embedding_model(build_embedding_model_for_stage(config), config, device)
+    configure_text_embedding_dim(model, int(z_text.shape[-1]), device)
     checkpoint = args.checkpoint or config.get("paths", {}).get("checkpoint")
     if checkpoint:
         load_checkpoint(
@@ -61,13 +64,6 @@ def run(ctx: dict, args) -> None:
     else:
         logger.warning("No checkpoint provided; evaluating randomly initialized trainable modules.")
 
-    text_bank_path = resolve_text_bank_path(config, "eval")
-    z_text, class_ids = load_text_bank(
-        text_bank_path,
-        device,
-        expected_text_mode=config.get("_meta", {}).get("text_mode"),
-        expected_metadata=expected_text_bank_metadata(config),
-    )
     candidate_classes = resolve_class_scope(config, eval_cfg.get("candidate_scope", "unseen"))
     z_text, class_ids = select_text_classes(
         z_text,
@@ -89,7 +85,7 @@ def run(ctx: dict, args) -> None:
 
 
 def main() -> None:
-    args = parse_common_args("Evaluate Skeleton-GIRCSE under ZSL candidates.")
+    args = parse_common_args("Evaluate skeleton embedding model under ZSL candidates.")
     ctx = initialize_run_for_kind(args, run_kind="eval")
     try:
         run(ctx, args)

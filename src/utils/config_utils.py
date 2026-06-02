@@ -185,9 +185,11 @@ def _copy_alias(config: dict[str, Any], alias: str, canonical: str) -> None:
 def _template_replacements(config: Mapping[str, Any], project_root: Path) -> dict[str, str]:
     text_num_classes = get_nested(
         config,
-        ["text_branch", "generation", "num_classes"],
+        ["text_branch", "num_classes"],
         get_nested(config, ["dataset", "num_classes"], ""),
     )
+    embedding_model_path = get_nested(config, ["paths", "embedding_model"], "")
+    embedding_model_name = Path(str(embedding_model_path)).name if embedding_model_path else ""
     description_variant = get_nested(config, ["text_branch", "description_variant"], "")
     text_variant = short_description_variant(description_variant)
     text_mode = text_mode_suffix_from_variant(description_variant)
@@ -209,8 +211,8 @@ def _template_replacements(config: Mapping[str, Any], project_root: Path) -> dic
         "text_num_classes": text_num_classes,
         "description_variant": description_variant,
         "description_variant_short": text_variant,
-        "k_text": get_nested(config, ["text_branch", "embedding", "k_text"], ""),
         "main_label_alpha": get_nested(config, ["text_branch", "embedding", "main_label_alpha"], ""),
+        "embedding_model": embedding_model_name,
         "projector_mode": projector_mode,
         "projector_type": projector_type,
         "text_mode": text_mode,
@@ -367,9 +369,10 @@ def build_experiment_name(config: Mapping[str, Any]) -> str:
     modality = get_nested(config, ["model", "modality"], "skeleton")
     loss_type = get_nested(config, ["loss", "type"], "loss")
     proj_type = get_nested(config, ["model", "projector", "type"], "proj")
-    proj_dim = get_nested(config, ["model", "projector", "llm_dim"], "d")
+    proj_dim = get_nested(config, ["model", "projector", "llm_dim"], "auto")
+    if proj_dim is None:
+        proj_dim = "auto"
     stage = get_nested(config, ["eval", "stage"], get_nested(config, ["train", "stage"], "run"))
-    k_value = _display_k_for_stage(config, str(stage))
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     fp = config_fingerprint(
         {
@@ -380,7 +383,6 @@ def build_experiment_name(config: Mapping[str, Any]) -> str:
             "modality": modality,
             "loss": loss_type,
             "projector": get_nested(config, ["model", "projector"], {}),
-            "soft_tokens": get_nested(config, ["model", "soft_tokens"], {}),
             "text_branch": get_nested(config, ["text_branch"], {}),
             "text_bank": get_nested(config, ["paths", "text_bank"], None),
             "train_text_bank": get_nested(config, ["train", "text_bank_path"], None),
@@ -391,7 +393,7 @@ def build_experiment_name(config: Mapping[str, Any]) -> str:
     )
     raw = (
         f"{stage}-{dataset}-split_{split_name}-modality_{modality}-loss_{loss_type}-"
-        f"proj_{proj_type}-dim_{proj_dim}-K_{k_value}-{fp}-{stamp}{run_identity_suffix(config)}"
+        f"proj_{proj_type}-dim_{proj_dim}-{fp}-{stamp}{run_identity_suffix(config)}"
     )
     return sanitize_name(raw)
 
@@ -412,62 +414,16 @@ def build_compact_experiment_name(config: Mapping[str, Any]) -> str:
             ["eval", "eval_batch_size"],
             get_nested(config, ["eval", "batch_size"], "bs"),
         )
-        k_eval = _display_k_value(
-            get_nested(
-                config,
-                ["eval", "k"],
-                get_nested(
-                    config,
-                    ["eval", "k_values"],
-                    get_nested(config, ["model", "soft_tokens", "k_test"], "k"),
-                ),
-            )
-        )
-        return sanitize_name(f"eval_{task}_{dataset_label}_BS{batch_size}_K{k_eval}{run_identity_suffix(config)}")
+        return sanitize_name(f"eval_{task}_{dataset_label}_BS{batch_size}{run_identity_suffix(config)}")
 
     stage = str(get_nested(config, ["train", "stage"], "train"))
     batch_size = get_nested(config, ["train", "batch_size"], "bs")
     epochs = get_nested(config, ["train", "epochs"], "ep")
     if stage in {"prealign", "warmup"}:
         return sanitize_name(f"train_{stage}_{dataset_label}_BS{batch_size}_EP{epochs}{run_identity_suffix(config)}")
-    k_train = _display_k_for_stage(config, stage)
     return sanitize_name(
-        f"train_{stage}_{dataset_label}_BS{batch_size}_EP{epochs}_K{k_train}{run_identity_suffix(config)}"
+        f"train_{stage}_{dataset_label}_BS{batch_size}_EP{epochs}{run_identity_suffix(config)}"
     )
-
-
-def _display_k_for_stage(config: Mapping[str, Any], stage: str) -> str:
-    normalized = stage.lower()
-    if normalized in {"eval_zsl", "eval_gzsl", "eval_k_scaling", "zsl", "gzsl", "k_scaling"}:
-        return _display_k_value(
-            get_nested(
-                config,
-                ["eval", "k"],
-                get_nested(
-                    config,
-                    ["eval", "k_values"],
-                    get_nested(config, ["model", "soft_tokens", "k_test"], "k"),
-                ),
-            )
-        )
-    if normalized in {
-        "prealign",
-        "warmup",
-        "direct_qformer_baseline",
-        "direct_qformer",
-        "direct",
-        "anchor_hidden_baseline",
-        "anchor_hidden",
-        "anchor",
-    }:
-        return "none"
-    return _display_k_value(get_nested(config, ["model", "soft_tokens", "k_train"], "k"))
-
-
-def _display_k_value(value: Any) -> str:
-    if isinstance(value, list):
-        return "-".join(str(item) for item in value)
-    return str(value)
 
 
 def ensure_text_mode_suffix(value: str, config: Mapping[str, Any]) -> str:

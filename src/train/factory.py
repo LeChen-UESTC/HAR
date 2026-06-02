@@ -6,33 +6,34 @@ import torch
 from torch import nn
 
 from src.models.encoder import build_shift_gcn_from_config
-from src.models.gircse_loader import load_gircse_model_and_tokenizer
 from src.models.projection import TokenProjector
 from src.models.qformer_projector import SkeletonQFormerProjector, qformer_config_from_dict
-from src.models.skeleton_gircse import (
-    AnchorHiddenStateEmbedding,
-    DirectQFormerEmbedding,
-    SkeletonGIRCSE,
-)
+from src.models.skeleton_embedding import DirectQFormerEmbedding, SkeletonEmbeddingModel
 from src.models.skeleton_prompt_builder import SkeletonPromptBuilder
-from src.models.soft_token_generator import SoftTokenGenerator
+from src.models.text_space_projection import TextSpaceProjection
 from src.utils.torch_utils import hf_model_kwargs
 
 
 class WarmupSkeletonTextModel(nn.Module):
-    def __init__(self, shift_gcn: nn.Module, token_projector: nn.Module) -> None:
+    def __init__(self, shift_gcn: nn.Module, token_projector: nn.Module, hidden_dim: int) -> None:
         super().__init__()
         self.shift_gcn = shift_gcn
         self.token_projector = token_projector
+        self.embedding_projection = TextSpaceProjection(hidden_dim)
 
     def forward(self, skeleton: torch.Tensor) -> torch.Tensor:
         feat = self.shift_gcn.forward_features(skeleton)
         tokens = self.token_projector(feat)
-        return torch.nn.functional.normalize(tokens.mean(dim=1).float(), dim=-1)
+        return self.embedding_projection(tokens.mean(dim=1))
+
+    def set_text_embedding_dim(self, target_dim: int) -> None:
+        self.embedding_projection.configure(target_dim)
 
 
-def build_projector(config: dict[str, Any]) -> nn.Module:
-    cfg = config["model"]["projector"]
+def build_projector(config: dict[str, Any], output_dim: int | None = None) -> nn.Module:
+    cfg = dict(config["model"]["projector"])
+    if output_dim is not None:
+        cfg["llm_dim"] = int(output_dim)
     projector_type = str(cfg.get("type", "linear"))
     if projector_type in {"linear", "linear_layernorm"}:
         return TokenProjector(
@@ -41,152 +42,118 @@ def build_projector(config: dict[str, Any]) -> nn.Module:
             target_temporal_bins=int(cfg.get("target_temporal_bins", 4)),
         )
     if projector_type in {"qformer", "general_qformer", "part_aware_qformer"}:
-        qformer_cfg = dict(cfg)
         if projector_type == "general_qformer":
-            qformer_cfg["type"] = "qformer"
-            qformer_cfg["use_part_token_embeddings"] = False
+            cfg["type"] = "qformer"
+            cfg["use_part_token_embeddings"] = False
         if projector_type == "part_aware_qformer":
-            qformer_cfg["use_part_token_embeddings"] = bool(
-                qformer_cfg.get("use_part_token_embeddings", True)
-            )
-        return SkeletonQFormerProjector(qformer_config_from_dict(qformer_cfg))
+            cfg["use_part_token_embeddings"] = bool(cfg.get("use_part_token_embeddings", True))
+        return SkeletonQFormerProjector(qformer_config_from_dict(cfg))
     raise ValueError(f"Unsupported projector.type={projector_type}")
 
 
 def build_warmup_model(config: dict[str, Any]) -> WarmupSkeletonTextModel:
     _validate_frozen_shift_gcn_checkpoint(config)
+    hidden_dim = resolve_embedding_hidden_size(config)
     shift_gcn = build_shift_gcn_from_config(config)
     if config.get("train", {}).get("freeze_shift_gcn", False):
         for param in shift_gcn.parameters():
             param.requires_grad = False
-    return WarmupSkeletonTextModel(shift_gcn, build_projector(config))
-
-
-def build_skeleton_gircse_model(config: dict[str, Any]) -> SkeletonGIRCSE:
-    shift_gcn = build_shift_gcn_from_config(config)
-    if config.get("train", {}).get("freeze_shift_gcn", False):
-        for param in shift_gcn.parameters():
-            param.requires_grad = False
-    projector = build_projector(config)
-    paths = config["paths"]
-    llm, tokenizer = load_gircse_model_and_tokenizer(
-        base_model_path=paths.get("gircse_base_model", paths["qwen_instruct_model"]),
-        adapter_path=paths.get("gircse_adapter", paths.get("gircse_model")),
-        model_kwargs=hf_model_kwargs(config, for_text=False),
-        trust_remote_code=bool(config.get("runtime", {}).get("trust_remote_code", True)),
+    return WarmupSkeletonTextModel(
+        shift_gcn=shift_gcn,
+        token_projector=build_projector(config, output_dim=hidden_dim),
+        hidden_dim=hidden_dim,
     )
 
-    if config.get("train", {}).get("freeze_llm", True):
-        for param in llm.parameters():
+
+def build_skeleton_embedding_model(config: dict[str, Any]) -> SkeletonEmbeddingModel:
+    shift_gcn = build_shift_gcn_from_config(config)
+    if config.get("train", {}).get("freeze_shift_gcn", False):
+        for param in shift_gcn.parameters():
             param.requires_grad = False
-    if config.get("train", {}).get("freeze_lm_head", True) and hasattr(llm, "lm_head"):
-        for param in llm.lm_head.parameters():
+    embedding_model, tokenizer = load_embedding_model_and_tokenizer(config)
+    if config.get("train", {}).get("freeze_embedding_model", True):
+        for param in embedding_model.parameters():
             param.requires_grad = False
     if config.get("train", {}).get("gradient_checkpointing", False):
-        if hasattr(llm, "gradient_checkpointing_enable"):
-            llm.gradient_checkpointing_enable()
-        if hasattr(llm, "config"):
-            llm.config.use_cache = False
-
-    expected_dim = int(config["model"]["projector"]["llm_dim"])
-    actual_dim = int(llm.config.hidden_size)
-    if expected_dim != actual_dim:
-        raise ValueError(
-            f"Projector llm_dim={expected_dim} does not match GIRCSE hidden_size={actual_dim}"
-        )
-
+        if hasattr(embedding_model, "gradient_checkpointing_enable"):
+            embedding_model.gradient_checkpointing_enable()
+        if hasattr(embedding_model, "config"):
+            embedding_model.config.use_cache = False
+    hidden_dim = int(embedding_model.config.hidden_size)
     prompt_builder = SkeletonPromptBuilder(
         tokenizer=tokenizer,
-        token_embedding=llm.get_input_embeddings(),
+        token_embedding=embedding_model.get_input_embeddings(),
         prompt_text=config["model"]["prompt"]["text"],
     )
-    generator = SoftTokenGenerator(
-        llm=llm,
-        token_embedding_table=llm.get_input_embeddings(),
-        K=resolve_soft_token_k(config),
-        normalize=True,
-        logit_temperature=float(config["model"]["soft_tokens"].get("logit_temperature", 1.0)),
-        pooling_method=str(config["model"]["soft_tokens"].get("pooling", "generate_mean")),
-    )
-    return SkeletonGIRCSE(
+    return SkeletonEmbeddingModel(
         shift_gcn=shift_gcn,
-        token_projector=projector,
-        soft_token_generator=generator,
+        token_projector=build_projector(config, output_dim=hidden_dim),
+        embedding_model=embedding_model,
         prompt_builder=prompt_builder,
     )
 
 
 def build_direct_qformer_baseline(config: dict[str, Any]) -> DirectQFormerEmbedding:
+    hidden_dim = resolve_embedding_hidden_size(config)
     shift_gcn = build_shift_gcn_from_config(config)
     if config.get("train", {}).get("freeze_shift_gcn", False):
         for param in shift_gcn.parameters():
             param.requires_grad = False
-    projector = build_projector(config)
     return DirectQFormerEmbedding(
         shift_gcn=shift_gcn,
-        token_projector=projector,
-        hidden_dim=int(config["model"]["projector"]["llm_dim"]),
-    )
-
-
-def build_anchor_hidden_baseline(config: dict[str, Any]) -> AnchorHiddenStateEmbedding:
-    shift_gcn = build_shift_gcn_from_config(config)
-    if config.get("train", {}).get("freeze_shift_gcn", False):
-        for param in shift_gcn.parameters():
-            param.requires_grad = False
-    projector = build_projector(config)
-    llm, tokenizer = _load_training_llm(config)
-    prompt_builder = SkeletonPromptBuilder(
-        tokenizer=tokenizer,
-        token_embedding=llm.get_input_embeddings(),
-        prompt_text=config["model"]["prompt"]["text"],
-    )
-    return AnchorHiddenStateEmbedding(
-        shift_gcn=shift_gcn,
-        token_projector=projector,
-        llm=llm,
-        prompt_builder=prompt_builder,
+        token_projector=build_projector(config, output_dim=hidden_dim),
+        hidden_dim=hidden_dim,
     )
 
 
 def build_embedding_model_for_stage(config: dict[str, Any]) -> nn.Module:
-    stage = str(config.get("train", {}).get("stage", "skeleton_gircse")).lower()
-    if stage in {"direct_qformer_baseline", "direct_qformer", "direct"}:
+    stage = str(config.get("train", {}).get("stage", "skeleton_embedding")).lower()
+    if stage == "direct_qformer_baseline":
         return build_direct_qformer_baseline(config)
-    if stage in {"anchor_hidden_baseline", "anchor_hidden", "anchor"}:
-        return build_anchor_hidden_baseline(config)
-    return build_skeleton_gircse_model(config)
-
-
-def _load_training_llm(config: dict[str, Any]) -> tuple[Any, Any]:
-    paths = config["paths"]
-    llm, tokenizer = load_gircse_model_and_tokenizer(
-        base_model_path=paths.get("gircse_base_model", paths["qwen_instruct_model"]),
-        adapter_path=paths.get("gircse_adapter", paths.get("gircse_model")),
-        model_kwargs=hf_model_kwargs(config, for_text=False),
-        trust_remote_code=bool(config.get("runtime", {}).get("trust_remote_code", True)),
+    if stage == "skeleton_embedding":
+        return build_skeleton_embedding_model(config)
+    raise ValueError(
+        "Unsupported train.stage="
+        f"{stage!r}. Expected prealign, skeleton_embedding, or direct_qformer_baseline."
     )
-    if config.get("train", {}).get("freeze_llm", True):
-        for param in llm.parameters():
-            param.requires_grad = False
-    if config.get("train", {}).get("freeze_lm_head", True) and hasattr(llm, "lm_head"):
-        for param in llm.lm_head.parameters():
-            param.requires_grad = False
-    if config.get("train", {}).get("gradient_checkpointing", False):
-        if hasattr(llm, "gradient_checkpointing_enable"):
-            llm.gradient_checkpointing_enable()
-        if hasattr(llm, "config"):
-            llm.config.use_cache = False
-    expected_dim = int(config["model"]["projector"]["llm_dim"])
-    actual_dim = int(llm.config.hidden_size)
-    if expected_dim != actual_dim:
-        raise ValueError(
-            f"Projector llm_dim={expected_dim} does not match GIRCSE hidden_size={actual_dim}"
-        )
-    return llm, tokenizer
 
 
-def place_skeleton_gircse_model(
+def load_embedding_model_and_tokenizer(config: dict[str, Any]) -> tuple[Any, Any]:
+    from transformers import AutoModel, AutoTokenizer
+
+    model_path = config["paths"]["embedding_model"]
+    trust_remote_code = bool(config.get("runtime", {}).get("trust_remote_code", True))
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_path,
+        padding_side=str(config.get("text_branch", {}).get("embedding", {}).get("padding_side", "left")),
+        trust_remote_code=trust_remote_code,
+        local_files_only=True,
+    )
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    kwargs = hf_model_kwargs(config, for_text=False)
+    kwargs["local_files_only"] = True
+    model = AutoModel.from_pretrained(model_path, **kwargs)
+    model.eval()
+    return model, tokenizer
+
+
+def resolve_embedding_hidden_size(config: dict[str, Any]) -> int:
+    from transformers import AutoConfig
+
+    model_path = config["paths"]["embedding_model"]
+    model_cfg = AutoConfig.from_pretrained(
+        model_path,
+        trust_remote_code=bool(config.get("runtime", {}).get("trust_remote_code", True)),
+        local_files_only=True,
+    )
+    hidden_size = getattr(model_cfg, "hidden_size", None)
+    if hidden_size is None:
+        raise ValueError(f"Embedding model config is missing hidden_size: {model_path}")
+    return int(hidden_size)
+
+
+def place_embedding_model(
     model: nn.Module,
     config: dict[str, Any],
     device: torch.device,
@@ -194,44 +161,10 @@ def place_skeleton_gircse_model(
     if config.get("runtime", {}).get("device_map_train") is not None:
         model.shift_gcn.to(device)
         model.token_projector.to(device)
+        if hasattr(model, "embedding_projection"):
+            model.embedding_projection.to(device)
         return model
     return model.to(device)
-
-
-def resolve_soft_token_k(config: dict[str, Any]) -> int:
-    soft_cfg = config["model"]["soft_tokens"]
-    if config.get("_meta", {}).get("run_kind") == "eval":
-        eval_cfg = config.get("eval", {})
-        if eval_cfg.get("k") is not None:
-            return _positive_int(eval_cfg["k"], "eval.k")
-        if eval_cfg.get("k_values") is not None:
-            return max(_positive_int_list(eval_cfg["k_values"], "eval.k_values"))
-        if soft_cfg.get("k_test") is not None:
-            raw_k_test = soft_cfg["k_test"]
-            if isinstance(raw_k_test, list):
-                return max(_positive_int_list(raw_k_test, "model.soft_tokens.k_test"))
-            return _positive_int(raw_k_test, "model.soft_tokens.k_test")
-
-    raw = soft_cfg.get("k_train", 5)
-    if isinstance(raw, list):
-        return max(_positive_int_list(raw, "model.soft_tokens.k_train"))
-    return _positive_int(raw, "model.soft_tokens.k_train")
-
-
-def _positive_int(value: Any, name: str) -> int:
-    value = int(value)
-    if value < 1:
-        raise ValueError(f"{name} must be >= 1, got {value}")
-    return value
-
-
-def _positive_int_list(values: list[Any], name: str) -> list[int]:
-    if not values:
-        raise ValueError(f"{name} must not be an empty list")
-    parsed = [_positive_int(value, name) for value in values]
-    if len(set(parsed)) != len(parsed):
-        raise ValueError(f"{name} contains duplicate values: {parsed}")
-    return parsed
 
 
 def _validate_frozen_shift_gcn_checkpoint(config: dict[str, Any]) -> None:
@@ -249,7 +182,7 @@ def build_optimizer(config: dict[str, Any], model: nn.Module) -> torch.optim.Opt
     param_groups = []
     projector_params = [
         p for name, p in model.named_parameters()
-        if "token_projector" in name or "projector" in name
+        if _is_projector_side_parameter(name)
         if p.requires_grad
     ]
     shift_params = [
@@ -259,7 +192,7 @@ def build_optimizer(config: dict[str, Any], model: nn.Module) -> torch.optim.Opt
     ]
     other_params = [
         p for name, p in model.named_parameters()
-        if "token_projector" not in name and "projector" not in name and "shift_gcn" not in name
+        if not _is_projector_side_parameter(name) and "shift_gcn" not in name
         if p.requires_grad
     ]
     if projector_params:
@@ -276,8 +209,28 @@ def build_optimizer(config: dict[str, Any], model: nn.Module) -> torch.optim.Opt
     )
 
 
+def _is_projector_side_parameter(name: str) -> bool:
+    return name.startswith(
+        (
+            "token_projector.",
+            "embedding_projection.",
+            "embedding_head.",
+        )
+    )
+
+
 def checkpoint_include_prefixes(config: dict[str, Any]) -> tuple[str, ...]:
     stage = str(config.get("train", {}).get("stage", "")).lower()
-    if stage in {"direct_qformer_baseline", "direct_qformer", "direct"}:
-        return ("shift_gcn.", "token_projector.", "embedding_head.")
-    return ("shift_gcn.", "token_projector.")
+    if stage == "direct_qformer_baseline":
+        return ("shift_gcn.", "token_projector.", "embedding_head.", "embedding_projection.")
+    return ("shift_gcn.", "token_projector.", "embedding_projection.")
+
+
+def configure_text_embedding_dim(model: nn.Module, text_dim: int, device: torch.device) -> nn.Module:
+    if hasattr(model, "set_text_embedding_dim"):
+        model.set_text_embedding_dim(int(text_dim))
+        if hasattr(model, "embedding_projection"):
+            model.embedding_projection.to(device)
+    else:
+        raise TypeError(f"Model {type(model).__name__} does not support text embedding projection")
+    return model

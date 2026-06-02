@@ -10,7 +10,7 @@ from src.train.common import apply_runtime_environment, materialize_run_config, 
 
 
 def main() -> None:
-    args = parse_common_args("Cache GIRCSE text embeddings.")
+    args = parse_common_args("Cache Qwen3Embedding4B text banks.")
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s | %(levelname)s | %(message)s",

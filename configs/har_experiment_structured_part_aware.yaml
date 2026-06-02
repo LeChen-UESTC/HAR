@@ -2,7 +2,7 @@ base_config: har_experiment.yaml
 
 experiment:
   variant_name: structured_part_aware
-  tags: ["skeleton-gircse", "structured_part_aware"]
+  tags: ["skeleton-embedding", "structured_part_aware"]
 
 model:
   projector:

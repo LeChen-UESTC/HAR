@@ -5,14 +5,14 @@ runtime:
 
 experiment:
   variant_name: structured_linear
-  tags: ["skeleton-gircse", "structured_linear"]
+  tags: ["skeleton-embedding", "structured_linear"]
 
 model:
   projector:
     type: linear
 
 train_presets:
-  skeleton_gircse:
+  skeleton_embedding:
     train:
       batch_size: 4
       gradient_accumulation_steps: 8

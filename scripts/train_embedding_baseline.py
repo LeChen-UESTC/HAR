@@ -32,7 +32,8 @@ from src.train.factory import (
     build_embedding_model_for_stage,
     build_optimizer,
     checkpoint_include_prefixes,
-    place_skeleton_gircse_model,
+    configure_text_embedding_dim,
+    place_embedding_model,
 )
 from src.utils.checkpoint import load_checkpoint, save_checkpoint, update_run_registry
 from src.utils.distributed import is_main_process
@@ -52,7 +53,16 @@ def run(ctx: dict, args) -> None:
     if config["train"].get("eval_during_train", False):
         train_eval_loaders = build_train_eval_loaders(config, cache_manager, logger)
 
-    model = place_skeleton_gircse_model(build_embedding_model_for_stage(config), config, device)
+    model = place_embedding_model(build_embedding_model_for_stage(config), config, device)
+    text_bank_path = resolve_text_bank_path(config, "train")
+    logger.info("Using text bank: mode=%s path=%s", config.get("_meta", {}).get("text_mode"), text_bank_path)
+    text_banks_all, class_ids_all = load_text_bank_bundle(
+        text_bank_path,
+        device,
+        expected_text_mode=config.get("_meta", {}).get("text_mode"),
+        expected_metadata=expected_text_bank_metadata(config),
+    )
+    configure_text_embedding_dim(model, int(text_banks_all["main"].shape[-1]), device)
     if args.checkpoint:
         load_checkpoint(
             args.checkpoint,
@@ -66,14 +76,6 @@ def run(ctx: dict, args) -> None:
         logger.info("Loaded checkpoint: %s", args.checkpoint)
 
     optimizer = build_optimizer(config, model)
-    text_bank_path = resolve_text_bank_path(config, "train")
-    logger.info("Using text bank: mode=%s path=%s", config.get("_meta", {}).get("text_mode"), text_bank_path)
-    text_banks_all, class_ids_all = load_text_bank_bundle(
-        text_bank_path,
-        device,
-        expected_text_mode=config.get("_meta", {}).get("text_mode"),
-        expected_metadata=expected_text_bank_metadata(config),
-    )
     train_eval_text_banks = None
     if train_eval_loaders is not None:
         train_eval_text_banks = build_train_eval_text_banks(config, text_banks_all["main"], class_ids_all)
@@ -108,6 +110,8 @@ def run(ctx: dict, args) -> None:
         "projector_type": config.get("_meta", {}).get("projector_type"),
         "projector_mode": config.get("_meta", {}).get("projector_mode"),
         "text_bank_path": text_bank_path,
+        "text_embedding_dim": int(text_banks_all["main"].shape[-1]),
+        "embedding_model_path": config.get("paths", {}).get("embedding_model"),
         "train_stage": config.get("train", {}).get("stage"),
     }
 
@@ -219,7 +223,7 @@ def run(ctx: dict, args) -> None:
 
 
 def main() -> None:
-    args = parse_common_args("Train direct or anchor embedding baselines.")
+    args = parse_common_args("Train skeleton embedding model or direct baseline.")
     ctx = initialize_run_for_kind(args, run_kind="train")
     try:
         run(ctx, args)

@@ -14,5 +14,5 @@ Adaptation notes:
   fallback in `shift.py`;
 - CUDA-only parameter initialization was changed to device-agnostic tensors;
 - `forward_features()` was added to expose the pre-classifier feature map
-  required by Skeleton-GIRCSE;
+  required by the skeleton embedding pipeline;
 - deprecated NumPy integer aliases were removed.

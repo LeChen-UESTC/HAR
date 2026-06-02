@@ -17,7 +17,7 @@ class ShiftGCNBackbone(nn.Module):
     """Shift-GCN compatible interface.
 
     This module provides the expected tensor contract for the rest of the
-    Skeleton-GIRCSE pipeline. It can be replaced by a full Shift-GCN
+    skeleton embedding pipeline. It can be replaced by a full Shift-GCN
     implementation without changing projector, loss, train, or eval code.
     """
 

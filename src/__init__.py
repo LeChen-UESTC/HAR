@@ -1,4 +1,4 @@
-"""Skeleton-GIRCSE package."""
+"""Skeleton embedding package."""
 
 __all__ = ["__version__"]
 

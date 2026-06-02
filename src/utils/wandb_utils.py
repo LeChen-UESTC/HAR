@@ -42,7 +42,7 @@ def init_wandb(
         import wandb  # type: ignore
 
         run = wandb.init(
-            project=config.get("experiment", {}).get("project_name", "skeleton-gircse"),
+            project=config.get("experiment", {}).get("project_name", "skeleton-embedding"),
             name=exp_name,
             dir=str(run_dir),
             mode=mode,
