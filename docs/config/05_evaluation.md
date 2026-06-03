@@ -45,7 +45,8 @@ null
 
 - `zsl` 默认只评估 unseen 类。
 - `gzsl` 默认评估 seen + unseen，并报告 harmonic mean。
+- 评估 prealign checkpoint 时必须加 `--override train.stage=prealign`；评估 skeleton embedding checkpoint 时使用 `--override train.stage=skeleton_embedding` 或默认配置。
 - `text_bank_path: null` 表示使用全局 `paths.text_bank`；填路径则只覆盖当前评估任务。
 - 评估输出目录和 `metrics.json` 会记录当前 `text_mode` 和 `projector_type`。
 - 加载 text bank 时会校验其 metadata 中的 `text_mode` 是否等于当前配置。
-- 加载 checkpoint 时会校验 `text_mode` 和 `projector_type` 是否等于当前配置。
+- 加载 checkpoint 时会校验 `text_mode`、`projector_type`、`train_stage` 是否等于当前配置。

@@ -23,10 +23,10 @@ from src.train.common import (
     select_device,
 )
 from src.train.factory import (
-    build_embedding_model_for_stage,
-    checkpoint_include_prefixes,
+    build_model_for_stage,
+    checkpoint_include_prefixes_for_stage,
     configure_text_embedding_dim,
-    place_embedding_model,
+    place_model_for_stage,
 )
 from src.utils.checkpoint import load_checkpoint
 
@@ -48,7 +48,8 @@ def run(ctx: dict, args) -> None:
         expected_text_mode=config.get("_meta", {}).get("text_mode"),
         expected_metadata=expected_text_bank_metadata(config),
     )
-    model = place_embedding_model(build_embedding_model_for_stage(config), config, device)
+    train_stage = str(config.get("train", {}).get("stage", "skeleton_embedding")).lower()
+    model = place_model_for_stage(build_model_for_stage(config, train_stage), config, device, train_stage)
     configure_text_embedding_dim(model, int(z_text.shape[-1]), device)
     checkpoint = args.checkpoint or config.get("paths", {}).get("checkpoint")
     if checkpoint:
@@ -57,9 +58,10 @@ def run(ctx: dict, args) -> None:
             model,
             map_location="cpu",
             strict=False,
-            include_prefixes=checkpoint_include_prefixes(config),
+            include_prefixes=checkpoint_include_prefixes_for_stage(train_stage),
             expected_projector_type=config.get("_meta", {}).get("projector_type"),
             expected_text_mode=config.get("_meta", {}).get("text_mode"),
+            expected_train_stage=train_stage,
         )
     else:
         logger.warning("No checkpoint provided; evaluating randomly initialized trainable modules.")
@@ -79,6 +81,7 @@ def run(ctx: dict, args) -> None:
     )
     metrics["text_mode"] = config.get("_meta", {}).get("text_mode")
     metrics["projector_type"] = config.get("_meta", {}).get("projector_type")
+    metrics["train_stage"] = train_stage
     metrics["text_bank_path"] = text_bank_path
     logger.info("ZSL top1=%.4f num_samples=%s", metrics["top1"], metrics["num_samples"])
     save_eval_outputs(metrics, Path(dirs["eval_dir"]))

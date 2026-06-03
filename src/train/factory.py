@@ -118,6 +118,33 @@ def build_embedding_model_for_stage(config: dict[str, Any]) -> nn.Module:
     )
 
 
+def build_model_for_stage(config: dict[str, Any], stage: str | None = None) -> nn.Module:
+    resolved_stage = str(stage or config.get("train", {}).get("stage", "skeleton_embedding")).lower()
+    if resolved_stage in {"prealign", "warmup"}:
+        return build_warmup_model(config)
+    if resolved_stage in {"skeleton_embedding", "direct_qformer_baseline"}:
+        stage_config = dict(config)
+        stage_config["train"] = dict(config.get("train", {}))
+        stage_config["train"]["stage"] = resolved_stage
+        return build_embedding_model_for_stage(stage_config)
+    raise ValueError(
+        f"Unsupported train.stage={resolved_stage!r}. "
+        "Expected prealign, skeleton_embedding, or direct_qformer_baseline."
+    )
+
+
+def place_model_for_stage(
+    model: nn.Module,
+    config: dict[str, Any],
+    device: torch.device,
+    stage: str | None = None,
+) -> nn.Module:
+    resolved_stage = str(stage or config.get("train", {}).get("stage", "skeleton_embedding")).lower()
+    if resolved_stage in {"prealign", "warmup"}:
+        return model.to(device)
+    return place_embedding_model(model, config, device)
+
+
 def load_embedding_model_and_tokenizer(config: dict[str, Any]) -> tuple[Any, Any]:
     from transformers import AutoModel, AutoTokenizer
 
@@ -221,6 +248,11 @@ def _is_projector_side_parameter(name: str) -> bool:
 
 def checkpoint_include_prefixes(config: dict[str, Any]) -> tuple[str, ...]:
     stage = str(config.get("train", {}).get("stage", "")).lower()
+    return checkpoint_include_prefixes_for_stage(stage)
+
+
+def checkpoint_include_prefixes_for_stage(stage: str) -> tuple[str, ...]:
+    stage = str(stage).lower()
     if stage == "direct_qformer_baseline":
         return ("shift_gcn.", "token_projector.", "embedding_head.", "embedding_projection.")
     return ("shift_gcn.", "token_projector.", "embedding_projection.")

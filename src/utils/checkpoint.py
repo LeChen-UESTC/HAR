@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -101,6 +102,7 @@ def load_checkpoint(
     include_prefixes: tuple[str, ...] | None = None,
     expected_projector_type: str | None = None,
     expected_text_mode: str | None = None,
+    expected_train_stage: str | None = None,
 ) -> dict[str, Any]:
     import torch
 
@@ -109,8 +111,10 @@ def load_checkpoint(
         payload,
         expected_text_mode=expected_text_mode,
         expected_projector_type=expected_projector_type,
+        expected_train_stage=expected_train_stage,
         checkpoint_path=path,
     )
+    model_to_load = unwrap_model(model)
     state_dict = payload["model"]
     if include_prefixes:
         state_dict = {
@@ -118,12 +122,34 @@ def load_checkpoint(
             for key, value in state_dict.items()
             if key.startswith(include_prefixes)
         }
-    unwrap_model(model).load_state_dict(state_dict, strict=strict)
+    state_dict = adapt_checkpoint_state_dict(state_dict, model_to_load)
+    load_result = model_to_load.load_state_dict(state_dict, strict=strict)
+    if not strict and (load_result.missing_keys or load_result.unexpected_keys):
+        warnings.warn(
+            "Checkpoint loaded with missing/unexpected keys. "
+            f"missing={load_result.missing_keys[:20]} unexpected={load_result.unexpected_keys[:20]}",
+            RuntimeWarning,
+        )
     if optimizer is not None and "optimizer" in payload:
         optimizer.load_state_dict(payload["optimizer"])
     if scheduler is not None and "scheduler" in payload:
         scheduler.load_state_dict(payload["scheduler"])
     return payload
+
+
+def adapt_checkpoint_state_dict(state_dict: Mapping[str, Any], model: Any) -> dict[str, Any]:
+    target_keys = set(model.state_dict().keys())
+    adapted: dict[str, Any] = {}
+    for key, value in state_dict.items():
+        candidate = key
+        if ".qformer.bert." in key:
+            migrated = key.replace(".qformer.bert.", ".qformer.")
+            if migrated in target_keys:
+                candidate = migrated
+        if ".qformer.cls." in candidate and candidate not in target_keys:
+            continue
+        adapted[candidate] = value
+    return adapted
 
 
 def validate_checkpoint_text_mode(
@@ -135,6 +161,7 @@ def validate_checkpoint_text_mode(
         payload,
         expected_text_mode=expected_text_mode,
         expected_projector_type=None,
+        expected_train_stage=None,
         checkpoint_path=checkpoint_path,
     )
 
@@ -143,6 +170,7 @@ def validate_checkpoint_identity(
     payload: Mapping[str, Any],
     expected_text_mode: str | None,
     expected_projector_type: str | None,
+    expected_train_stage: str | None,
     checkpoint_path: str | Path,
 ) -> None:
     extra = payload.get("extra", {})
@@ -174,6 +202,16 @@ def validate_checkpoint_identity(
             f"checkpoint={checkpoint_path} actual={actual_projector} expected={expected_projector_type}"
         )
 
+    actual_stage = extra.get("train_stage") if isinstance(extra, Mapping) else None
+    if not actual_stage:
+        actual_stage = infer_train_stage_from_path(checkpoint_path)
+    if expected_train_stage and actual_stage and str(actual_stage) != str(expected_train_stage):
+        raise ValueError(
+            "Checkpoint train_stage does not match current config. "
+            f"checkpoint={checkpoint_path} actual={actual_stage} expected={expected_train_stage}. "
+            "Use --override train.stage=<checkpoint stage> when evaluating this checkpoint."
+        )
+
 
 def infer_text_mode_from_path(path: str | Path) -> str | None:
     suffixes = sorted(
@@ -200,4 +238,15 @@ def infer_projector_type_from_path(path: str | Path) -> str | None:
         for suffix in suffixes:
             if name.endswith(suffix) or f"{suffix}_" in name:
                 return suffix[1:]
+    return None
+
+
+def infer_train_stage_from_path(path: str | Path) -> str | None:
+    text = "/".join(Path(path).parts).lower()
+    if "train_prealign" in text or "stage=prealign" in text:
+        return "prealign"
+    if "train_skeleton_embedding" in text:
+        return "skeleton_embedding"
+    if "direct_qformer_baseline" in text:
+        return "direct_qformer_baseline"
     return None
