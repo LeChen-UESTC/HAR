@@ -53,7 +53,7 @@ def run(ctx: dict, args) -> None:
     configure_text_embedding_dim(model, int(z_text.shape[-1]), device)
     checkpoint = args.checkpoint or config.get("paths", {}).get("checkpoint")
     if checkpoint:
-        load_checkpoint(
+        payload = load_checkpoint(
             checkpoint,
             model,
             map_location="cpu",
@@ -62,6 +62,13 @@ def run(ctx: dict, args) -> None:
             expected_projector_type=config.get("_meta", {}).get("projector_type"),
             expected_text_mode=config.get("_meta", {}).get("text_mode"),
             expected_train_stage=train_stage,
+        )
+        saved_metrics = payload.get("metrics", {})
+        logger.info(
+            "Loaded checkpoint: path=%s epoch=%s saved_zsl_top1=%s",
+            checkpoint,
+            payload.get("epoch"),
+            saved_metrics.get("zsl_top1"),
         )
     else:
         logger.warning("No checkpoint provided; evaluating randomly initialized trainable modules.")

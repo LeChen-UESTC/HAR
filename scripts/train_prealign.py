@@ -73,6 +73,7 @@ def run(ctx: dict, args) -> None:
             include_prefixes=checkpoint_include_prefixes(config),
             expected_projector_type=config.get("_meta", {}).get("projector_type"),
             expected_text_mode=config.get("_meta", {}).get("text_mode"),
+            expected_train_stage=config.get("train", {}).get("stage"),
         )
         if "optimizer" in payload:
             try:

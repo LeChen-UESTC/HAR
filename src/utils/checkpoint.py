@@ -124,10 +124,25 @@ def load_checkpoint(
         }
     state_dict = adapt_checkpoint_state_dict(state_dict, model_to_load)
     load_result = model_to_load.load_state_dict(state_dict, strict=strict)
-    if not strict and (load_result.missing_keys or load_result.unexpected_keys):
+    if not strict:
+        trainable_names = {
+            name
+            for name, param in model_to_load.named_parameters()
+            if param.requires_grad
+        }
+        missing_trainable = [
+            key for key in load_result.missing_keys
+            if key in trainable_names
+        ]
+        if missing_trainable:
+            raise RuntimeError(
+                "Checkpoint did not load all trainable parameters. "
+                f"missing_trainable={missing_trainable[:50]}"
+            )
+    if not strict and load_result.unexpected_keys:
         warnings.warn(
-            "Checkpoint loaded with missing/unexpected keys. "
-            f"missing={load_result.missing_keys[:20]} unexpected={load_result.unexpected_keys[:20]}",
+            "Checkpoint loaded with unexpected keys. "
+            f"unexpected={load_result.unexpected_keys[:20]}",
             RuntimeWarning,
         )
     if optimizer is not None and "optimizer" in payload:
@@ -205,7 +220,12 @@ def validate_checkpoint_identity(
     actual_stage = extra.get("train_stage") if isinstance(extra, Mapping) else None
     if not actual_stage:
         actual_stage = infer_train_stage_from_path(checkpoint_path)
-    if expected_train_stage and actual_stage and str(actual_stage) != str(expected_train_stage):
+    if expected_train_stage and not actual_stage:
+        raise ValueError(
+            "Checkpoint is missing train_stage metadata and its path does not identify a train stage: "
+            f"{checkpoint_path}. Expected {expected_train_stage}."
+        )
+    if expected_train_stage and str(actual_stage).lower() != str(expected_train_stage).lower():
         raise ValueError(
             "Checkpoint train_stage does not match current config. "
             f"checkpoint={checkpoint_path} actual={actual_stage} expected={expected_train_stage}. "

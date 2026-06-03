@@ -409,12 +409,15 @@ def build_compact_experiment_name(config: Mapping[str, Any]) -> str:
     dataset_label = _dataset_split_label(str(dataset), str(split_name))
     if run_kind == "eval":
         task = get_nested(config, ["eval", "task"], get_nested(config, ["eval", "stage"], "eval"))
+        train_stage = get_nested(config, ["train", "stage"], "stage")
         batch_size = get_nested(
             config,
             ["eval", "eval_batch_size"],
             get_nested(config, ["eval", "batch_size"], "bs"),
         )
-        return sanitize_name(f"eval_{task}_{dataset_label}_BS{batch_size}{run_identity_suffix(config)}")
+        return sanitize_name(
+            f"eval_{task}_{train_stage}_{dataset_label}_BS{batch_size}{run_identity_suffix(config)}"
+        )
 
     stage = str(get_nested(config, ["train", "stage"], "train"))
     batch_size = get_nested(config, ["train", "batch_size"], "bs")
