@@ -38,6 +38,7 @@ def save_checkpoint(
             for name, param in unwrapped.named_parameters()
             if param.requires_grad
         }
+        buffer_names = {name for name, _buffer in unwrapped.named_buffers()}
         trainable_module_prefixes = {
             name.rsplit(".", 1)[0]
             for name in trainable_names
@@ -47,6 +48,7 @@ def save_checkpoint(
             key: value.detach().cpu()
             for key, value in state_dict.items()
             if key in trainable_names
+            or key in buffer_names
             or any(key.startswith(f"{prefix}.") for prefix in trainable_module_prefixes)
         }
 

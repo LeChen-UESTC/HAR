@@ -11,6 +11,7 @@ from src.models.qformer_projector import SkeletonQFormerProjector, qformer_confi
 from src.models.skeleton_embedding import DirectQFormerEmbedding, SkeletonEmbeddingModel
 from src.models.skeleton_prompt_builder import SkeletonPromptBuilder
 from src.models.text_space_projection import TextSpaceProjection
+from src.utils.distributed import unwrap_model
 from src.utils.torch_utils import hf_model_kwargs
 
 
@@ -143,6 +144,15 @@ def place_model_for_stage(
     if resolved_stage in {"prealign", "warmup"}:
         return model.to(device)
     return place_embedding_model(model, config, device)
+
+
+def set_frozen_modules_eval(model: nn.Module, config: dict[str, Any]) -> None:
+    unwrapped = unwrap_model(model)
+    train_cfg = config.get("train", {})
+    if train_cfg.get("freeze_shift_gcn", False) and hasattr(unwrapped, "shift_gcn"):
+        unwrapped.shift_gcn.eval()
+    if train_cfg.get("freeze_embedding_model", True) and hasattr(unwrapped, "embedding_model"):
+        unwrapped.embedding_model.eval()
 
 
 def load_embedding_model_and_tokenizer(config: dict[str, Any]) -> tuple[Any, Any]:

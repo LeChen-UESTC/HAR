@@ -34,11 +34,30 @@ from src.train.factory import (
     checkpoint_include_prefixes,
     configure_text_embedding_dim,
     place_embedding_model,
+    set_frozen_modules_eval,
 )
-from src.utils.checkpoint import load_checkpoint, save_checkpoint, update_run_registry
+from src.utils.checkpoint import (
+    infer_train_stage_from_path,
+    load_checkpoint,
+    save_checkpoint,
+    update_run_registry,
+)
 from src.utils.distributed import is_main_process, reduce_sum, wrap_model_for_distributed
 from src.utils.metrics import append_jsonl
 from src.utils.wandb_utils import wandb_log
+
+
+def _checkpoint_train_stage(path: str, payload: dict) -> str:
+    extra = payload.get("extra", {})
+    stage = extra.get("train_stage") if isinstance(extra, dict) else None
+    if not stage:
+        stage = infer_train_stage_from_path(path)
+    if not stage:
+        raise ValueError(
+            "Checkpoint is missing train_stage metadata and its path does not identify a train stage: "
+            f"{path}."
+        )
+    return str(stage).lower()
 
 
 def run(ctx: dict, args) -> None:
@@ -64,7 +83,7 @@ def run(ctx: dict, args) -> None:
     )
     configure_text_embedding_dim(model, int(text_banks_all["main"].shape[-1]), device)
     if args.checkpoint:
-        load_checkpoint(
+        payload = load_checkpoint(
             args.checkpoint,
             model,
             map_location="cpu",
@@ -72,9 +91,23 @@ def run(ctx: dict, args) -> None:
             include_prefixes=checkpoint_include_prefixes(config),
             expected_projector_type=config.get("_meta", {}).get("projector_type"),
             expected_text_mode=config.get("_meta", {}).get("text_mode"),
-            expected_train_stage=config.get("train", {}).get("stage"),
         )
-        logger.info("Loaded checkpoint: %s", args.checkpoint)
+        checkpoint_stage = _checkpoint_train_stage(args.checkpoint, payload)
+        current_stage = str(config.get("train", {}).get("stage", "")).lower()
+        allowed_stages = {current_stage}
+        if current_stage == "skeleton_embedding":
+            allowed_stages.add("prealign")
+        if checkpoint_stage not in allowed_stages:
+            raise ValueError(
+                "Checkpoint train_stage is not valid for this training run. "
+                f"checkpoint={args.checkpoint} actual={checkpoint_stage!r} allowed={sorted(allowed_stages)}"
+            )
+        logger.info(
+            "Loaded checkpoint: path=%s checkpoint_stage=%s current_stage=%s",
+            args.checkpoint,
+            checkpoint_stage,
+            current_stage,
+        )
 
     optimizer = build_optimizer(config, model)
     model = wrap_model_for_distributed(model, device=device)
@@ -121,6 +154,7 @@ def run(ctx: dict, args) -> None:
         if hasattr(train_loader.sampler, "set_epoch"):
             train_loader.sampler.set_epoch(epoch)
         model.train()
+        set_frozen_modules_eval(model, config)
         total_loss = 0.0
         total = 0
         pending_backward_steps = 0

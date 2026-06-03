@@ -33,6 +33,7 @@ from src.train.factory import (
     build_warmup_model,
     checkpoint_include_prefixes,
     configure_text_embedding_dim,
+    set_frozen_modules_eval,
 )
 from src.utils.checkpoint import load_checkpoint, save_checkpoint
 from src.utils.distributed import is_main_process, reduce_sum, wrap_model_for_distributed
@@ -135,6 +136,7 @@ def run(ctx: dict, args) -> None:
         if hasattr(train_loader.sampler, "set_epoch"):
             train_loader.sampler.set_epoch(epoch)
         model.train()
+        set_frozen_modules_eval(model, config)
         total_loss = 0.0
         total = 0
         for step, batch in enumerate(train_loader, start=1):
@@ -193,6 +195,7 @@ def run(ctx: dict, args) -> None:
                     eval_metrics["gzsl_h_mean"],
                 )
                 model.train()
+                set_frozen_modules_eval(model, config)
 
         reduced_total_loss = reduce_sum(total_loss, device=device)
         reduced_total = reduce_sum(total, device=device)
